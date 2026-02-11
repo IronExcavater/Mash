@@ -9,6 +9,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2591003264289673103}
+  - component: {fileID: 7308795645424243168}
+  - component: {fileID: 1528362563376393166}
+  - component: {fileID: 5404996556844670762}
+  - component: {fileID: 9064869454901671569}
   m_Layer: 0
   m_Name: Helicopter
   m_TagString: Untagged
@@ -32,6 +36,170 @@ Transform:
   - {fileID: 7201894241851924527}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7308795645424243168
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8070011900795780186}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c451ab121ea511d4c8f196499a322750, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HelicopterBladeSpinner
+  autoAssignRotors: 1
+  mainRotorTransform: {fileID: 0}
+  tailRotorTransform: {fileID: 0}
+  spinMainAroundMeshCenter: 1
+  spinTailAroundMeshCenter: 1
+  mainRotorLocalAxis: {x: 0, y: 0, z: 1}
+  tailRotorLocalAxis: {x: 1, y: 0, z: 0}
+  mainRotorSpeedRange:
+    min: 650
+    max: 1700
+  tailRotorSpeedRange:
+    min: 800
+    max: 2600
+  spoolUpRate: 2800
+  spoolDownRate: 950
+  autoAssignAudioSource: 1
+  rotorAudioSource: {fileID: 0}
+  rotorLoopClip: {fileID: 8300000, guid: a6d03797b6d3eb14fa69f78a1cfb8f75, type: 3}
+  rotorPitchRange:
+    min: 0.75
+    max: 1.35
+  rotorVolumeRange:
+    min: 0.2
+    max: 0.85
+--- !u!54 &1528362563376393166
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8070011900795780186}
+  serializedVersion: 5
+  m_Mass: 3200
+  m_LinearDamping: 0.35
+  m_AngularDamping: 3.5
+  m_CenterOfMass: {x: 0, y: -0.25, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 0
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 1
+  m_Constraints: 0
+  m_CollisionDetection: 2
+--- !u!114 &5404996556844670762
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8070011900795780186}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85b5d928f1830ef4382a58a90c311849, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HelicopterFlightController
+  controlScheme: 0
+  simplePlanarVelocityGain: 3
+  simplePlanarBrakeGain: 2.4
+  simpleMaxPlanarAcceleration: 18
+  simpleMaxHorizontalSpeed: 28
+  simpleHoldHeading: 0
+  simpleYawToVelocityMinSpeed: 1.2
+  simpleYawFollowSpeed: 9
+  maxComplexPitch: 16
+  maxComplexRoll: 16
+  complexYawRate: 110
+  complexPlanarDamping: 0.15
+  complexCyclicAssistAcceleration: 12
+  autoYawToVelocity: 1
+  complexYawToVelocityMinSpeed: 1.2
+  complexYawFollowSpeed: 9
+  autoEnableInputActions: 1
+  keyboardFallbackInput: 1
+  moveAction: {fileID: 0}
+  ascendAction: {fileID: 0}
+  descendAction: {fileID: 0}
+  engineToggleAction: {fileID: 0}
+  startEngineOn: 1
+  engineSpoolUpRate: 1
+  engineSpoolDownRate: 0.4
+  maxLiftAcceleration: 10
+  hoverThrottle: 0.55
+  collectiveResponse: 0.4
+  verticalVelocityGain: 3.4
+  maxVerticalSpeed: 10
+  minLiftUpDot: 0.45
+  simpleLiftUprightBlend: 0.9
+  complexLiftUprightBlend: 0.15
+  maxLiftCompensation: 1.35
+  autoHoldAltitude: 1
+  altitudeHoldStrength: 2
+  altitudeHoldDamping: 1.4
+  maxAltitudeHoldSpeed: 4
+  yawStiffness: 26
+  yawDamping: 8
+  maxYawTorque: 28
+  tiltStiffness: 22
+  tiltDamping: 7
+  maxTiltTorque: 30
+  emergencyUprightTorque: 36
+  maxPitchRollRate: 2.5
+  enableWind: 1
+  windHorizontalAcceleration: 1
+  windVerticalAcceleration: 0.35
+  windFrequency: 0.2
+  landingProbeDistance: 2
+  landingMaxVerticalSpeed: 1.1
+  landingMaxPlanarSpeed: 1.4
+  groundLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  landedLockForce: 8
+  landedLockTorque: 10
+  applyRigidbodySettings: 0
+  ensureRigidbodyCanSimulate: 1
+  rigidbodyMass: 2600
+  linearDamping: 0.35
+  angularDamping: 2.5
+  maxAngularSpeed: 8
+  centerOfMassOffset: {x: 0, y: -0.2, z: 0}
+--- !u!114 &9064869454901671569
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8070011900795780186}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6cb2427b90f8fc942a595a778cb379a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HelicopterCollisionHandler
+  collisionLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  hazardTag: Tree
+  disableMotorOnHazardHit: 1
+  logHitDetails: 0
+  onAnyCollision:
+    m_PersistentCalls:
+      m_Calls: []
+  onHazardCollision:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1001 &7239815516515108804
 PrefabInstance:
   m_ObjectHideFlags: 0
