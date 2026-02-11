@@ -9,9 +9,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2591003264289673103}
-  - component: {fileID: 7308795645424243168}
-  - component: {fileID: 1528362563376393166}
   - component: {fileID: 5404996556844670762}
+  - component: {fileID: 1528362563376393166}
+  - component: {fileID: 7308795645424243168}
   - component: {fileID: 9064869454901671569}
   m_Layer: 0
   m_Name: Helicopter
@@ -36,69 +36,6 @@ Transform:
   - {fileID: 7201894241851924527}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &7308795645424243168
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8070011900795780186}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c451ab121ea511d4c8f196499a322750, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::HelicopterBladeSpinner
-  autoAssignRotors: 1
-  mainRotorTransform: {fileID: 0}
-  tailRotorTransform: {fileID: 0}
-  spinMainAroundMeshCenter: 1
-  spinTailAroundMeshCenter: 1
-  mainRotorLocalAxis: {x: 0, y: 0, z: 1}
-  tailRotorLocalAxis: {x: 1, y: 0, z: 0}
-  mainRotorSpeedRange:
-    min: 650
-    max: 1700
-  tailRotorSpeedRange:
-    min: 800
-    max: 2600
-  spoolUpRate: 2800
-  spoolDownRate: 950
-  autoAssignAudioSource: 1
-  rotorAudioSource: {fileID: 0}
-  rotorLoopClip: {fileID: 8300000, guid: a6d03797b6d3eb14fa69f78a1cfb8f75, type: 3}
-  rotorPitchRange:
-    min: 0.75
-    max: 1.35
-  rotorVolumeRange:
-    min: 0.2
-    max: 0.85
---- !u!54 &1528362563376393166
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8070011900795780186}
-  serializedVersion: 5
-  m_Mass: 3200
-  m_LinearDamping: 0.35
-  m_AngularDamping: 3.5
-  m_CenterOfMass: {x: 0, y: -0.25, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 0
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 0
-  m_Interpolate: 1
-  m_Constraints: 0
-  m_CollisionDetection: 2
 --- !u!114 &5404996556844670762
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -176,6 +113,69 @@ MonoBehaviour:
   angularDamping: 2.5
   maxAngularSpeed: 8
   centerOfMassOffset: {x: 0, y: -0.2, z: 0}
+--- !u!54 &1528362563376393166
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8070011900795780186}
+  serializedVersion: 5
+  m_Mass: 3200
+  m_LinearDamping: 0.35
+  m_AngularDamping: 3.5
+  m_CenterOfMass: {x: 0, y: -0.25, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 0
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 1
+  m_Constraints: 0
+  m_CollisionDetection: 2
+--- !u!114 &7308795645424243168
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8070011900795780186}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c451ab121ea511d4c8f196499a322750, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HelicopterBladeSpinner
+  autoAssignRotors: 1
+  mainRotorTransform: {fileID: 0}
+  tailRotorTransform: {fileID: 0}
+  spinMainAroundMeshCenter: 1
+  spinTailAroundMeshCenter: 1
+  mainRotorLocalAxis: {x: 0, y: 0, z: 1}
+  tailRotorLocalAxis: {x: 1, y: 0, z: 0}
+  mainRotorSpeedRange:
+    min: 650
+    max: 1700
+  tailRotorSpeedRange:
+    min: 800
+    max: 2600
+  spoolUpRate: 2800
+  spoolDownRate: 950
+  autoAssignAudioSource: 1
+  rotorAudioSource: {fileID: 0}
+  rotorLoopClip: {fileID: 8300000, guid: a6d03797b6d3eb14fa69f78a1cfb8f75, type: 3}
+  rotorPitchRange:
+    min: 0.75
+    max: 1.35
+  rotorVolumeRange:
+    min: 0.2
+    max: 0.85
 --- !u!114 &9064869454901671569
 MonoBehaviour:
   m_ObjectHideFlags: 0

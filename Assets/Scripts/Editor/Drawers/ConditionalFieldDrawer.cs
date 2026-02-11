@@ -22,6 +22,7 @@ public class ConditionalFieldDrawer : PropertyDrawer
     {
         if (!ShouldShow(property)) return;
         var data = (ConditionalFieldAttribute)attribute;
+        var propertyLabel = new GUIContent(property.displayName, label.tooltip);
 
         if (!string.IsNullOrWhiteSpace(data.header))
         {
@@ -30,7 +31,7 @@ public class ConditionalFieldDrawer : PropertyDrawer
             position = new Rect(position.x, position.y + HeaderHeight, position.width, position.height - HeaderHeight);
         }
 
-        EditorGUI.PropertyField(position, property, label, true);
+        EditorGUI.PropertyField(position, property, propertyLabel, true);
     }
 
     private bool ShouldShow(SerializedProperty property)

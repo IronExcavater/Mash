@@ -24,6 +24,8 @@ public class HelicopterRotorController : MonoBehaviour
     [Header("Spin Speeds")]
     [SerializeField, MinMaxRange(0f, 5000f)] private MinMaxFloat mainRotorSpeedRange = new MinMaxFloat(650f, 1700f);
     [SerializeField, MinMaxRange(0f, 5000f)] private MinMaxFloat tailRotorSpeedRange = new MinMaxFloat(800f, 2600f);
+    [SerializeField, Min(0f)] private float mainRotorIdleSpeed = 90f;
+    [SerializeField, Min(0f)] private float tailRotorIdleSpeed = 140f;
     [SerializeField, Min(10f)] private float spoolUpRate = 2800f;
     [SerializeField, Min(10f)] private float spoolDownRate = 950f;
 
@@ -70,8 +72,8 @@ public class HelicopterRotorController : MonoBehaviour
         var motion01 = GetMotionAmount01();
         var accel = engineOn ? spoolUpRate : spoolDownRate;
 
-        var targetMain = engineOn ? mainRotorSpeedRange.Lerp(motion01) : 0f;
-        var targetTail = engineOn ? tailRotorSpeedRange.Lerp(motion01) : 0f;
+        var targetMain = engineOn ? mainRotorSpeedRange.Lerp(motion01) : mainRotorIdleSpeed;
+        var targetTail = engineOn ? tailRotorSpeedRange.Lerp(motion01) : tailRotorIdleSpeed;
 
         mainRotorSpeed = Mathf.MoveTowards(mainRotorSpeed, targetMain, accel * dt);
         tailRotorSpeed = Mathf.MoveTowards(tailRotorSpeed, targetTail, accel * dt);
@@ -235,6 +237,8 @@ public class HelicopterRotorController : MonoBehaviour
 
         mainRotorSpeedRange.ClampAndOrder(0f, 5000f);
         tailRotorSpeedRange.ClampAndOrder(0f, 5000f);
+        mainRotorIdleSpeed = Mathf.Clamp(mainRotorIdleSpeed, 0f, mainRotorSpeedRange.max);
+        tailRotorIdleSpeed = Mathf.Clamp(tailRotorIdleSpeed, 0f, tailRotorSpeedRange.max);
         rotorPitchRange.ClampAndOrder(0f, 2f);
         rotorVolumeRange.ClampAndOrder(0f, 1f);
     }
