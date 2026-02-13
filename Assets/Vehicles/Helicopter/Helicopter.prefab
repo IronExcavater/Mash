@@ -49,70 +49,109 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HelicopterFlightController
   controlScheme: 0
-  simplePlanarVelocityGain: 3
-  simplePlanarBrakeGain: 2.4
-  simpleMaxPlanarAcceleration: 18
-  simpleMaxHorizontalSpeed: 28
-  simpleHoldHeading: 0
-  simpleYawToVelocityMinSpeed: 1.2
-  simpleYawFollowSpeed: 9
-  maxComplexPitch: 16
-  maxComplexRoll: 16
-  complexYawRate: 110
-  complexPlanarDamping: 0.15
-  complexCyclicAssistAcceleration: 12
-  autoYawToVelocity: 1
-  complexYawToVelocityMinSpeed: 1.2
-  complexYawFollowSpeed: 9
-  autoEnableInputActions: 1
-  keyboardFallbackInput: 1
-  moveAction: {fileID: 0}
-  ascendAction: {fileID: 0}
-  descendAction: {fileID: 0}
-  engineToggleAction: {fileID: 0}
-  startEngineOn: 1
-  engineSpoolUpRate: 1
-  engineSpoolDownRate: 0.4
-  maxLiftAcceleration: 10
-  hoverThrottle: 0.55
-  collectiveResponse: 0.4
-  verticalVelocityGain: 3.4
-  maxVerticalSpeed: 10
-  minLiftUpDot: 0.45
-  simpleLiftUprightBlend: 0.9
-  complexLiftUprightBlend: 0.15
-  maxLiftCompensation: 1.35
-  autoHoldAltitude: 1
-  altitudeHoldStrength: 2
-  altitudeHoldDamping: 1.4
-  maxAltitudeHoldSpeed: 4
-  yawStiffness: 26
-  yawDamping: 8
-  maxYawTorque: 28
-  tiltStiffness: 22
-  tiltDamping: 7
-  maxTiltTorque: 30
-  emergencyUprightTorque: 36
-  maxPitchRollRate: 2.5
-  enableWind: 1
-  windHorizontalAcceleration: 1
-  windVerticalAcceleration: 0.35
-  windFrequency: 0.2
-  landingProbeDistance: 2
-  landingMaxVerticalSpeed: 1.1
-  landingMaxPlanarSpeed: 1.4
-  groundLayers:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  landedLockForce: 8
-  landedLockTorque: 10
-  applyRigidbodySettings: 0
-  ensureRigidbodyCanSimulate: 1
-  rigidbodyMass: 2600
-  linearDamping: 0.35
-  angularDamping: 2.5
-  maxAngularSpeed: 8
-  centerOfMassOffset: {x: 0, y: -0.2, z: 0}
+  simpleControl:
+    planarVelocityGain: 3.5
+    planarBrakeGain: 2.7
+    maxPlanarAcceleration: 18
+    maxHorizontalSpeed: 33
+    holdHeading: 0
+    yawToVelocityMinSpeed: 1.2
+    yawFollowSpeed: 9
+    liftUprightBlend: 0.9
+  complexControl:
+    maxPitch: 16
+    maxRoll: 16
+    yawRate: 110
+    planarDamping: 0.15
+    cyclicAssistAcceleration: 12
+    lateralStrafeAssistAcceleration: 1.8
+    autoYawToVelocity: 1
+    yawToVelocityMinSpeed: 1.2
+    yawFollowSpeed: 9
+    liftUprightBlend: 0.15
+  zLock:
+    enabled: 1
+    groundClearance: 8
+    groundClearanceProbeDistance: 150
+    lookAheadTime: 1.05
+    lookAheadMaxDistance: 28
+    sampleRadius: 4.5
+    holdResponse: 2.8
+    holdDamping: 1.8
+    maxCorrectionSpeed: 12
+  inputSettings:
+    autoEnableActions: 1
+    keyboardFallback: 1
+    moveAction: {fileID: 0}
+    ascendAction: {fileID: 0}
+    descendAction: {fileID: 0}
+  engineSettings:
+    startOn: 1
+    spoolUpRate: 1
+    spoolDownRate: 0.4
+  liftSettings:
+    maxAcceleration: 26
+    hoverThrottle: 0.55
+    collectiveResponse: 0.4
+    verticalInputResponseSpeed: 2.5
+    verticalVelocityGain: 3.4
+    maxVerticalSpeed: 10
+    descentSpeedMultiplier: 0.55
+    minLiftUpDot: 0.45
+    maxLiftCompensation: 1.35
+  altitudeHold:
+    enabled: 1
+    strength: 2
+    damping: 1.4
+    maxSpeed: 4
+    guidanceBlend: 0.6
+    hoverCollectiveTrim: -0.04
+  attitude:
+    yawStiffness: 26
+    yawDamping: 8
+    maxYawTorque: 28
+    tiltStiffness: 22
+    tiltDamping: 7
+    maxTiltTorque: 30
+    emergencyUprightTorque: 36
+    maxPitchRollRate: 2.5
+  wind:
+    enabled: 1
+    horizontalAcceleration: 1
+    verticalAcceleration: 0.35
+    frequency: 0.2
+  ground:
+    landingProbeDistance: 2
+    probeSkin: 0.08
+    landingMaxVerticalSpeed: 1.1
+    landingMaxPlanarSpeed: 1.4
+    groundLayers:
+      serializedVersion: 2
+      m_Bits: 4294967295
+    landedLockForce: 8
+    landedLockTorque: 10
+  spawn:
+    clearanceAboveGround: 10
+    groundProbeDistance: 300
+  autoShutdown:
+    enabled: 1
+    delay: 1.75
+    maxVerticalSpeed: 1.75
+    maxPlanarSpeed: 2.2
+    groundProbeDistance: 4
+    moveDeadzone: 0.12
+    verticalDeadzone: 0.12
+  engineRestart:
+    enabled: 1
+    liftInputThreshold: 0.25
+  physicsSettings:
+    applySettings: 0
+    ensureCanSimulate: 1
+    mass: 2600
+    linearDamping: 0.35
+    angularDamping: 2.5
+    maxAngularSpeed: 8
+    centerOfMassOffset: {x: 0, y: -0.2, z: 0}
 --- !u!54 &1528362563376393166
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -165,6 +204,8 @@ MonoBehaviour:
   tailRotorSpeedRange:
     min: 800
     max: 2600
+  mainRotorIdleSpeed: 90
+  tailRotorIdleSpeed: 140
   spoolUpRate: 2800
   spoolDownRate: 950
   autoAssignAudioSource: 1

@@ -2,8 +2,8 @@
 using UnityEditor;
 using UnityEngine;
 
-[CustomPropertyDrawer(typeof(MinMaxRangeAttribute))]
-public class MinMaxRangeDrawer : PropertyDrawer
+[CustomPropertyDrawer(typeof(MinMaxIntAttribute))]
+public class MinMaxIntDrawer : PropertyDrawer
 {
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
@@ -20,7 +20,7 @@ public class MinMaxRangeDrawer : PropertyDrawer
             return;
         }
 
-        var range = (MinMaxRangeAttribute)attribute;
+        var range = (MinMaxIntAttribute)attribute;
         var minValue = minProp.floatValue;
         var maxValue = maxProp.floatValue;
 

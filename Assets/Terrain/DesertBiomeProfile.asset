@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 729c71ddb57b4f1469b030cd22794f50, type: 3}
+  m_Name: DesertBiomeProfile
+  m_EditorClassIdentifier: Assembly-CSharp::TerrainBiomeProfile
+  terrainWidth: 3000
+  terrainLength: 3000
+  terrainHeight: 200
+  heightmapResolution: 1025
+  centerAtWorldOrigin: 1
+  lowestPointAtWorldYZero: 1
+  terrainRelief: 0.5
+  duneHeight: 0.5
+  duneDirectionDegrees: 35
+  duneFrequency: 0.0035
+  duneVariation: 0.4
+  edgeFlattening: 0.1
+  mountainHeight: 0.72
+  mountainWidthFromEdge01: 0.28
+  mountainVariation: 0.5
+  baseLayer: {fileID: 8574412962073106934, guid: 25d686ecee8362d4ab6a94fc0a6a9f93, type: 2}
+  midLayer: {fileID: 8574412962073106934, guid: 385f7e6738277094c811a9194ba6b2da, type: 2}
+  steepLayer: {fileID: 8574412962073106934, guid: 6fa65f858a147b54798641cdfc977dae, type: 2}
+  tileSize: {x: 30, y: 30}
+  fallbackBaseColor: {r: 0.8, g: 0.7, b: 0.45, a: 1}
+  fallbackMidColor: {r: 0.63, g: 0.56, b: 0.38, a: 1}
+  fallbackSteepColor: {r: 0.45, g: 0.41, b: 0.34, a: 1}
+  alphamapResolution: 1024
+  slopeBlend:
+    min: 0.01
+    max: 0.12
+  heightBlend:
+    min: 0.16
+    max: 0.42
+  blendNoiseScale: 0.0012
+  blendNoiseStrength: 0.32
+  generateRoad: 0
+  generateTrees: 0
+  generateObjects: 0
+  roadWidth: 12
+  treeCount: 220
+  objectCount: 120
+  treePrefabs: []
+  objectPrefabs: []

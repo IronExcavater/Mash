@@ -22,8 +22,8 @@ public class HelicopterRotorController : MonoBehaviour
     [SerializeField] private Vector3 tailRotorLocalAxis = Vector3.right;
 
     [Header("Spin Speeds")]
-    [SerializeField, MinMaxRange(0f, 5000f)] private MinMaxFloat mainRotorSpeedRange = new MinMaxFloat(650f, 1700f);
-    [SerializeField, MinMaxRange(0f, 5000f)] private MinMaxFloat tailRotorSpeedRange = new MinMaxFloat(800f, 2600f);
+    [SerializeField, MinMaxInt(0f, 5000f)] private MinMaxFloat mainRotorSpeedRange = new MinMaxFloat(650f, 1700f);
+    [SerializeField, MinMaxInt(0f, 5000f)] private MinMaxFloat tailRotorSpeedRange = new MinMaxFloat(800f, 2600f);
     [SerializeField, Min(0f)] private float mainRotorIdleSpeed = 90f;
     [SerializeField, Min(0f)] private float tailRotorIdleSpeed = 140f;
     [SerializeField, Min(10f)] private float spoolUpRate = 2800f;
@@ -34,8 +34,8 @@ public class HelicopterRotorController : MonoBehaviour
     [ConditionalField("autoAssignAudioSource", false)]
     [SerializeField] private AudioSource rotorAudioSource;
     [SerializeField] private AudioClip rotorLoopClip;
-    [SerializeField, MinMaxRange(0f, 2f)] private MinMaxFloat rotorPitchRange = new MinMaxFloat(0.75f, 1.35f);
-    [SerializeField, MinMaxRange(0f, 1f)] private MinMaxFloat rotorVolumeRange = new MinMaxFloat(0.2f, 0.85f);
+    [SerializeField, MinMaxInt(0f, 2f)] private MinMaxFloat rotorPitchRange = new MinMaxFloat(0.75f, 1.35f);
+    [SerializeField, MinMaxInt(0f, 1f)] private MinMaxFloat rotorVolumeRange = new MinMaxFloat(0.2f, 0.85f);
 
     private HelicopterFlightController flightController;
     private Rigidbody body;

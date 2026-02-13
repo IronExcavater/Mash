@@ -11,7 +11,7 @@ public class ConditionalFieldDrawer : PropertyDrawer
 
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
-        if (!ShouldShow(property)) return HiddenHeight;
+        if (!SafeShouldShow(property)) return HiddenHeight;
         var height = EditorGUI.GetPropertyHeight(property, label, true);
         var data = (ConditionalFieldAttribute)attribute;
         if (string.IsNullOrWhiteSpace(data.header)) return height;
@@ -20,7 +20,7 @@ public class ConditionalFieldDrawer : PropertyDrawer
 
     public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
     {
-        if (!ShouldShow(property)) return;
+        if (!SafeShouldShow(property)) return;
         var data = (ConditionalFieldAttribute)attribute;
         var propertyLabel = new GUIContent(property.displayName, label.tooltip);
 
@@ -32,6 +32,21 @@ public class ConditionalFieldDrawer : PropertyDrawer
         }
 
         EditorGUI.PropertyField(position, property, propertyLabel, true);
+    }
+
+    private bool SafeShouldShow(SerializedProperty property)
+    {
+        if (property == null) return false;
+        try
+        {
+            return ShouldShow(property);
+        }
+        catch
+        {
+            // During inspector teardown Unity can dispose serialized objects between GUI passes.
+            // Returning false prevents editor exceptions from propagating.
+            return false;
+        }
     }
 
     private bool ShouldShow(SerializedProperty property)

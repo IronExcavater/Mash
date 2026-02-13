@@ -4,131 +4,202 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(Rigidbody))]
 public class HelicopterFlightController : MonoBehaviour
 {
+    [System.Serializable]
+    private class SimpleControlSettings
+    {
+        public float planarVelocityGain = 3.5f;
+        public float planarBrakeGain = 2.7f;
+        public float maxPlanarAcceleration = 18f;
+        public float maxHorizontalSpeed = 33f;
+        public bool holdHeading;
+        public float yawToVelocityMinSpeed = 1.2f;
+        public float yawFollowSpeed = 9f;
+        [Range(0f, 1f)] public float liftUprightBlend = 0.9f;
+    }
+
+    [System.Serializable]
+    private class ComplexControlSettings
+    {
+        [Range(0f, 35f)] public float maxPitch = 16f;
+        [Range(0f, 35f)] public float maxRoll = 16f;
+        public float yawRate = 110f;
+        public float planarDamping = 0.15f;
+        public float cyclicAssistAcceleration = 12f;
+        public float lateralStrafeAssistAcceleration = 1.8f;
+        public bool autoYawToVelocity = true;
+        public float yawToVelocityMinSpeed = 1.2f;
+        public float yawFollowSpeed = 9f;
+        [Range(0f, 1f)] public float liftUprightBlend = 0.15f;
+    }
+
+    [System.Serializable]
+    private class ZLockSettings
+    {
+        public bool enabled = true;
+        public float groundClearance = 8f;
+        public float groundClearanceProbeDistance = 150f;
+        public float lookAheadTime = 1.05f;
+        public float lookAheadMaxDistance = 28f;
+        public float sampleRadius = 4.5f;
+        public float holdResponse = 2.8f;
+        public float holdDamping = 1.8f;
+        public float maxCorrectionSpeed = 12f;
+    }
+
+    [System.Serializable]
+    private class InputSettings
+    {
+        public bool autoEnableActions = true;
+        public bool keyboardFallback = true;
+        public InputActionReference moveAction;
+        public InputActionReference ascendAction;
+        public InputActionReference descendAction;
+    }
+
+    [System.Serializable]
+    private class EngineSettings
+    {
+        public bool startOn = true;
+        public float spoolUpRate = 1f;
+        public float spoolDownRate = 0.4f;
+    }
+
+    [System.Serializable]
+    private class LiftSettings
+    {
+        public float maxAcceleration = 26f;
+        public float hoverThrottle = 0.55f;
+        public float collectiveResponse = 0.4f;
+        public float verticalInputResponseSpeed = 2.5f;
+        public float verticalVelocityGain = 3.4f;
+        public float maxVerticalSpeed = 10f;
+        public float descentSpeedMultiplier = 0.55f;
+        public float minLiftUpDot = 0.45f;
+        public float maxLiftCompensation = 1.35f;
+    }
+
+    [System.Serializable]
+    private class AltitudeHoldSettings
+    {
+        public bool enabled = true;
+        public float strength = 2f;
+        public float damping = 1.4f;
+        public float maxSpeed = 4f;
+        public float guidanceBlend = 0.6f;
+        public float hoverCollectiveTrim = -0.04f;
+    }
+
+    [System.Serializable]
+    private class AttitudeSettings
+    {
+        public float yawStiffness = 26f;
+        public float yawDamping = 8f;
+        public float maxYawTorque = 28f;
+        public float tiltStiffness = 22f;
+        public float tiltDamping = 7f;
+        public float maxTiltTorque = 30f;
+        public float emergencyUprightTorque = 36f;
+        public float maxPitchRollRate = 2.5f;
+    }
+
+    [System.Serializable]
+    private class WindSettings
+    {
+        public bool enabled = true;
+        public float horizontalAcceleration = 1f;
+        public float verticalAcceleration = 0.35f;
+        public float frequency = 0.2f;
+    }
+
+    [System.Serializable]
+    private class GroundContactSettings
+    {
+        public float landingProbeDistance = 2f;
+        public float probeSkin = 0.08f;
+        public float landingMaxVerticalSpeed = 1.1f;
+        public float landingMaxPlanarSpeed = 1.4f;
+        public LayerMask groundLayers = ~0;
+        public float landedLockForce = 8f;
+        public float landedLockTorque = 10f;
+    }
+
+    [System.Serializable]
+    private class SpawnSettings
+    {
+        public float clearanceAboveGround = 10f;
+        public float groundProbeDistance = 300f;
+    }
+
+    [System.Serializable]
+    private class AutoShutdownSettings
+    {
+        public bool enabled = true;
+        public float delay = 1.75f;
+        public float maxVerticalSpeed = 1.75f;
+        public float maxPlanarSpeed = 2.2f;
+        public float groundProbeDistance = 4f;
+        public float moveDeadzone = 0.12f;
+        public float verticalDeadzone = 0.12f;
+    }
+
+    [System.Serializable]
+    private class EngineRestartSettings
+    {
+        public bool enabled = true;
+        public float liftInputThreshold = 0.25f;
+    }
+
+    [System.Serializable]
+    private class RigidbodySettings
+    {
+        public bool applySettings;
+        public bool ensureCanSimulate = true;
+        public float mass = 2600f;
+        public float linearDamping = 0.35f;
+        public float angularDamping = 2.5f;
+        public float maxAngularSpeed = 8f;
+        public Vector3 centerOfMassOffset = new Vector3(0f, -0.2f, 0f);
+    }
+
     public enum ControlScheme
     {
         Simple = 0,
         Complex = 1
     }
 
-    [Header("Mode")]
     [SerializeField] private ControlScheme controlScheme = ControlScheme.Simple;
+    [FieldHeader("Simple Control", "controlScheme", (int)ControlScheme.Simple)]
+    [SerializeField] private SimpleControlSettings simpleControl = new SimpleControlSettings();
+    [FieldHeader("Complex Control", "controlScheme", (int)ControlScheme.Complex)]
+    [SerializeField] private ComplexControlSettings complexControl = new ComplexControlSettings();
+    [FieldHeader("Ground Clearance Z Lock")]
+    [SerializeField] private ZLockSettings zLock = new ZLockSettings();
 
-    [ConditionalField("controlScheme", (int)ControlScheme.Simple, "Simple Control")]
-    [SerializeField, Min(0f)] private float simplePlanarVelocityGain = 3f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Simple)]
-    [SerializeField, Min(0f)] private float simplePlanarBrakeGain = 2.4f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Simple)]
-    [SerializeField, Min(0f)] private float simpleMaxPlanarAcceleration = 18f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Simple)]
-    [SerializeField, Min(1f)] private float simpleMaxHorizontalSpeed = 28f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Simple)]
-    [SerializeField] private bool simpleHoldHeading;
-    [ConditionalField("controlScheme", (int)ControlScheme.Simple)]
-    [SerializeField, Min(0f)] private float simpleYawToVelocityMinSpeed = 1.2f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Simple)]
-    [SerializeField, Min(0f)] private float simpleYawFollowSpeed = 9f;
+    [FieldHeader("Input")]
+    [SerializeField] private InputSettings inputSettings = new InputSettings();
 
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex, "Complex Control")]
-    [SerializeField, Range(0f, 35f)] private float maxComplexPitch = 16f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex)]
-    [SerializeField, Range(0f, 35f)] private float maxComplexRoll = 16f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex)]
-    [SerializeField, Min(0f)] private float complexYawRate = 110f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex)]
-    [SerializeField, Min(0f)] private float complexPlanarDamping = 0.15f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex)]
-    [SerializeField, Min(0f)] private float complexCyclicAssistAcceleration = 10f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex)]
-    [SerializeField] private bool autoYawToVelocity = true;
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex)]
-    [SerializeField, Min(0f)] private float complexYawToVelocityMinSpeed = 1.2f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex)]
-    [SerializeField, Min(0f)] private float complexYawFollowSpeed = 9f;
+    [FieldHeader("Engine")]
+    [SerializeField] private EngineSettings engineSettings = new EngineSettings();
 
-    [Header("Input")]
-    [SerializeField] private bool autoEnableInputActions = true;
-    [SerializeField] private bool keyboardFallbackInput = true;
-    [SerializeField] private InputActionReference moveAction;
-    [SerializeField] private InputActionReference ascendAction;
-    [SerializeField] private InputActionReference descendAction;
+    [FieldHeader("Lift")]
+    [SerializeField] private LiftSettings liftSettings = new LiftSettings();
 
-    [Header("Engine")]
-    [SerializeField] private bool startEngineOn = true;
-    [SerializeField, Min(0.1f)] private float engineSpoolUpRate = 1f;
-    [SerializeField, Min(0.1f)] private float engineSpoolDownRate = 0.4f;
-
-    [Header("Lift")]
-    [SerializeField, Min(1f)] private float maxLiftAcceleration = 26f;
-    [SerializeField, Range(0f, 1.2f)] private float hoverThrottle = 0.55f;
-    [SerializeField, Range(0f, 1f)] private float collectiveResponse = 0.4f;
-    [SerializeField, Min(0f)] private float verticalInputResponseSpeed = 2.5f;
-    [SerializeField, Min(0f)] private float verticalVelocityGain = 3.4f;
-    [SerializeField, Min(1f)] private float maxVerticalSpeed = 10f;
-    [SerializeField, Range(0.1f, 1f)] private float descentSpeedMultiplier = 0.55f;
-    [SerializeField, Min(0.1f)] private float minLiftUpDot = 0.45f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Simple)]
-    [SerializeField, Range(0f, 1f)] private float simpleLiftUprightBlend = 0.9f;
-    [ConditionalField("controlScheme", (int)ControlScheme.Complex)]
-    [SerializeField, Range(0f, 1f)] private float complexLiftUprightBlend = 0.15f;
-    [SerializeField, Min(1f)] private float maxLiftCompensation = 1.35f;
-
-    [Header("Altitude Hold")]
-    [SerializeField] private bool autoHoldAltitude = true;
-    [SerializeField, Min(0f)] private float altitudeHoldStrength = 2f;
-    [SerializeField, Min(0f)] private float altitudeHoldDamping = 1.4f;
-    [SerializeField, Min(0f)] private float maxAltitudeHoldSpeed = 4f;
-
-    [Header("Attitude")]
-    [SerializeField, Min(0f)] private float yawStiffness = 26f;
-    [SerializeField, Min(0f)] private float yawDamping = 8f;
-    [SerializeField, Min(0f)] private float maxYawTorque = 28f;
-    [SerializeField, Min(0f)] private float tiltStiffness = 22f;
-    [SerializeField, Min(0f)] private float tiltDamping = 7f;
-    [SerializeField, Min(0f)] private float maxTiltTorque = 30f;
-    [SerializeField, Min(0f)] private float emergencyUprightTorque = 36f;
-    [SerializeField, Min(0f)] private float maxPitchRollRate = 2.5f;
-
-    [Header("Wind")]
-    [SerializeField] private bool enableWind = true;
-    [SerializeField, Min(0f)] private float windHorizontalAcceleration = 1f;
-    [SerializeField, Min(0f)] private float windVerticalAcceleration = 0.35f;
-    [SerializeField, Min(0f)] private float windFrequency = 0.2f;
-
-    [Header("Ground")]
-    [SerializeField, Min(0.1f)] private float landingProbeDistance = 2f;
-    [SerializeField, Min(0.01f)] private float groundProbeSkin = 0.08f;
-    [SerializeField, Min(0f)] private float landingMaxVerticalSpeed = 1.1f;
-    [SerializeField, Min(0f)] private float landingMaxPlanarSpeed = 1.4f;
-    [SerializeField] private LayerMask groundLayers = ~0;
-    [SerializeField, Min(0f)] private float landedLockForce = 8f;
-    [SerializeField, Min(0f)] private float landedLockTorque = 10f;
-
-    [Header("Ground Auto Engine Off")]
-    [SerializeField] private bool autoShutdownWhenLanded = true;
-    [SerializeField, Min(0f)] private float landedShutdownDelay = 1.75f;
-    [SerializeField, Min(0f)] private float engineShutdownMaxVerticalSpeed = 1.75f;
-    [SerializeField, Min(0f)] private float engineShutdownMaxPlanarSpeed = 2.2f;
-    [SerializeField, Min(0.1f)] private float autoShutdownGroundProbeDistance = 4f;
-    [SerializeField, Range(0f, 1f)] private float autoShutdownMoveDeadzone = 0.12f;
-    [SerializeField, Range(0f, 1f)] private float autoShutdownVerticalDeadzone = 0.12f;
-
-    [Header("Engine Restart")]
-    [SerializeField] private bool autoRestartEngineOnLiftInput = true;
-    [SerializeField, Range(0f, 1f)] private float restartLiftInputThreshold = 0.25f;
-
-    [Header("Rigidbody")]
-    [SerializeField] private bool applyRigidbodySettings;
-    [SerializeField] private bool ensureRigidbodyCanSimulate = true;
-    [ConditionalField("applyRigidbodySettings")]
-    [SerializeField, Min(1f)] private float rigidbodyMass = 2600f;
-    [ConditionalField("applyRigidbodySettings")]
-    [SerializeField, Min(0f)] private float linearDamping = 0.35f;
-    [ConditionalField("applyRigidbodySettings")]
-    [SerializeField, Min(0f)] private float angularDamping = 2.5f;
-    [ConditionalField("applyRigidbodySettings")]
-    [SerializeField, Min(0.1f)] private float maxAngularSpeed = 8f;
-    [ConditionalField("applyRigidbodySettings")]
-    [SerializeField] private Vector3 centerOfMassOffset = new Vector3(0f, -0.2f, 0f);
+    [FieldHeader("Altitude Hold")]
+    [SerializeField] private AltitudeHoldSettings altitudeHold = new AltitudeHoldSettings();
+    [FieldHeader("Attitude")]
+    [SerializeField] private AttitudeSettings attitude = new AttitudeSettings();
+    [FieldHeader("Wind")]
+    [SerializeField] private WindSettings wind = new WindSettings();
+    [FieldHeader("Ground")]
+    [SerializeField] private GroundContactSettings ground = new GroundContactSettings();
+    [FieldHeader("Spawn")]
+    [SerializeField] private SpawnSettings spawn = new SpawnSettings();
+    [FieldHeader("Ground Auto Engine Off")]
+    [SerializeField] private AutoShutdownSettings autoShutdown = new AutoShutdownSettings();
+    [FieldHeader("Engine Restart")]
+    [SerializeField] private EngineRestartSettings engineRestart = new EngineRestartSettings();
+    [FieldHeader("Rigidbody")]
+    [SerializeField] private RigidbodySettings physicsSettings = new RigidbodySettings();
 
     private Rigidbody body;
     private InputAction resolvedMoveAction;
@@ -151,6 +222,8 @@ public class HelicopterFlightController : MonoBehaviour
     private float windSeedY;
     private float windSeedZ;
     private Collider[] cachedColliders;
+    private readonly RaycastHit[] groundHitBuffer = new RaycastHit[16];
+    private bool startupPlacementComplete;
 
     public bool IsInputEnabled => inputEnabled;
     public bool IsEngineOn => engineOn;
@@ -169,10 +242,11 @@ public class HelicopterFlightController : MonoBehaviour
         CacheColliders();
         ConfigureRigidbody();
 
-        engineOn = startEngineOn;
+        engineOn = engineSettings.startOn;
         enginePower = engineOn ? 1f : 0f;
         heldAltitude = body.position.y;
-        hasHeldAltitude = true;
+        hasHeldAltitude = altitudeHold.enabled;
+        startupPlacementComplete = false;
 
         var planarForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
         if (planarForward.sqrMagnitude > 0.0001f) headingForward = planarForward.normalized;
@@ -185,17 +259,18 @@ public class HelicopterFlightController : MonoBehaviour
     private void OnEnable()
     {
         ResolveActions();
-        if (autoEnableInputActions) SetActionsEnabled(true);
+        if (inputSettings.autoEnableActions) SetActionsEnabled(true);
     }
 
     private void OnDisable()
     {
-        if (autoEnableInputActions) SetActionsEnabled(false);
+        if (inputSettings.autoEnableActions) SetActionsEnabled(false);
     }
 
     private void FixedUpdate()
     {
         EnsurePhysicsCanSimulate();
+        if (!TryCompleteStartupPlacement()) return;
 
         var dt = Time.fixedDeltaTime;
         UpdateGroundState();
@@ -206,7 +281,7 @@ public class HelicopterFlightController : MonoBehaviour
 
         if (!engineOn)
         {
-            if (autoRestartEngineOnLiftInput && verticalInputRaw > restartLiftInputThreshold)
+            if (engineRestart.enabled && verticalInputRaw > engineRestart.liftInputThreshold)
             {
                 engineOn = true;
                 landedShutdownTimer = 0f;
@@ -220,7 +295,10 @@ public class HelicopterFlightController : MonoBehaviour
             }
         }
 
-        var verticalStep = verticalInputResponseSpeed <= 0f ? 1f : verticalInputResponseSpeed * dt;
+        if (zLock.enabled)
+            verticalInputRaw = 0f;
+
+        var verticalStep = liftSettings.verticalInputResponseSpeed <= 0f ? 1f : liftSettings.verticalInputResponseSpeed * dt;
         currentVerticalInput = Mathf.MoveTowards(currentVerticalInput, verticalInputRaw, verticalStep);
         currentMoveInput = moveInput;
 
@@ -228,11 +306,11 @@ public class HelicopterFlightController : MonoBehaviour
         var planarVelocity = new Vector3(velocity.x, 0f, velocity.z);
 
         HorizontalSpeed01 = IsSimpleControl
-            ? Mathf.Clamp01(planarVelocity.magnitude / Mathf.Max(0.001f, simpleMaxHorizontalSpeed))
+            ? Mathf.Clamp01(planarVelocity.magnitude / Mathf.Max(0.001f, simpleControl.maxHorizontalSpeed))
             : Mathf.Clamp01(planarVelocity.magnitude / Mathf.Max(0.001f, 20f));
 
         UpdateAutoShutdown(moveInput, verticalInputRaw, dt);
-        UpdateHeldAltitude(currentVerticalInput);
+        UpdateHeldAltitude(currentVerticalInput, planarVelocity);
         ApplyLiftForce(currentVerticalInput, velocity.y);
         ApplyModePlanarForces(moveInput, planarVelocity);
         ApplyWindForce();
@@ -241,6 +319,55 @@ public class HelicopterFlightController : MonoBehaviour
         ApplyTiltTorque(moveInput);
         ApplyAngularRateLimit();
         ApplyLandedLock(planarVelocity);
+    }
+
+    private bool TryCompleteStartupPlacement()
+    {
+        if (startupPlacementComplete) return true;
+        if (body == null)
+        {
+            startupPlacementComplete = true;
+            return true;
+        }
+
+        var probeDistance = Mathf.Max(spawn.groundProbeDistance, zLock.groundClearanceProbeDistance);
+        if (TryGetNearestGroundHeightAround(body.position, probeDistance, out var nearestGroundY))
+        {
+            var clearance = zLock.enabled ? zLock.groundClearance : spawn.clearanceAboveGround;
+            var targetY = nearestGroundY + clearance;
+            heldAltitude = targetY;
+            hasHeldAltitude = altitudeHold.enabled;
+
+            var p = body.position;
+            p.y = targetY;
+            body.position = p;
+            transform.position = p;
+            body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
+            body.angularVelocity = Vector3.zero;
+
+            startupPlacementComplete = true;
+            return true;
+        }
+
+        if (TrySampleTerrainY(body.position, out var terrainY))
+        {
+            var clearance = zLock.enabled ? zLock.groundClearance : spawn.clearanceAboveGround;
+            var targetY = terrainY + clearance;
+            heldAltitude = targetY;
+            hasHeldAltitude = altitudeHold.enabled;
+
+            var p = body.position;
+            p.y = targetY;
+            body.position = p;
+            transform.position = p;
+            body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
+            body.angularVelocity = Vector3.zero;
+
+            startupPlacementComplete = true;
+            return true;
+        }
+
+        return false;
     }
 
     public void SetInputEnabled(bool isEnabled)
@@ -261,26 +388,45 @@ public class HelicopterFlightController : MonoBehaviour
 
     private void UpdateGroundState()
     {
-        isGrounded = IsNearGround(landingProbeDistance);
+        isGrounded = IsNearGround(ground.landingProbeDistance);
 
         var v = body.linearVelocity;
         var planarSpeed = new Vector2(v.x, v.z).magnitude;
-        isLanded = isGrounded && Mathf.Abs(v.y) <= landingMaxVerticalSpeed && planarSpeed <= landingMaxPlanarSpeed;
+        isLanded = isGrounded && Mathf.Abs(v.y) <= ground.landingMaxVerticalSpeed && planarSpeed <= ground.landingMaxPlanarSpeed;
     }
 
     private void UpdateEnginePower(float dt)
     {
         var target = engineOn ? 1f : 0f;
-        var rate = engineOn ? engineSpoolUpRate : engineSpoolDownRate;
+        var rate = engineOn ? engineSettings.spoolUpRate : engineSettings.spoolDownRate;
         enginePower = Mathf.MoveTowards(enginePower, target, rate * dt);
     }
 
-    private void UpdateHeldAltitude(float verticalInput)
+    private void UpdateHeldAltitude(float verticalInput, Vector3 planarVelocity)
     {
-        if (!autoHoldAltitude)
+        if (!altitudeHold.enabled)
         {
             hasHeldAltitude = false;
             return;
+        }
+
+        if (zLock.enabled && engineOn && !isLanded)
+        {
+            if (TryGetPredictiveGroundHeight(planarVelocity, out var groundY))
+            {
+                var desiredHoldAltitude = groundY + zLock.groundClearance;
+                heldAltitude = desiredHoldAltitude;
+
+                hasHeldAltitude = true;
+                return;
+            }
+
+            if (TryGetGroundHeightBelow(body.position, zLock.groundClearanceProbeDistance, out var fallbackGroundY))
+            {
+                heldAltitude = fallbackGroundY + zLock.groundClearance;
+                hasHeldAltitude = true;
+                return;
+            }
         }
 
         if (!engineOn || isLanded || Mathf.Abs(verticalInput) > 0.01f)
@@ -294,23 +440,35 @@ public class HelicopterFlightController : MonoBehaviour
     {
         if (!engineOn && enginePower <= 0.001f) return;
 
-        var downwardScale = verticalInput < 0f ? descentSpeedMultiplier : 1f;
-        var targetVerticalSpeed = verticalInput * maxVerticalSpeed * downwardScale;
-        if (autoHoldAltitude && Mathf.Abs(verticalInput) <= 0.01f && hasHeldAltitude)
+        var downwardScale = verticalInput < 0f ? liftSettings.descentSpeedMultiplier : 1f;
+        var targetVerticalSpeed = verticalInput * liftSettings.maxVerticalSpeed * downwardScale;
+        if (altitudeHold.enabled && Mathf.Abs(verticalInput) <= 0.01f && hasHeldAltitude)
         {
             var altitudeError = heldAltitude - body.position.y;
-            var holdSpeed = altitudeError * altitudeHoldStrength - verticalVelocity * altitudeHoldDamping;
-            targetVerticalSpeed = Mathf.Clamp(holdSpeed, -maxAltitudeHoldSpeed, maxAltitudeHoldSpeed);
+            if (zLock.enabled)
+            {
+                var guidedHoldSpeed = altitudeError * zLock.holdResponse - verticalVelocity * zLock.holdDamping;
+                guidedHoldSpeed = Mathf.Clamp(guidedHoldSpeed, -zLock.maxCorrectionSpeed, zLock.maxCorrectionSpeed);
+                targetVerticalSpeed = guidedHoldSpeed;
+            }
+            else
+            {
+                var holdSpeed = altitudeError * altitudeHold.strength - verticalVelocity * altitudeHold.damping;
+                var guidedHoldSpeed = Mathf.Clamp(holdSpeed, -altitudeHold.maxSpeed, altitudeHold.maxSpeed);
+                targetVerticalSpeed = Mathf.Lerp(targetVerticalSpeed, guidedHoldSpeed, altitudeHold.guidanceBlend);
+            }
         }
 
         var verticalError = targetVerticalSpeed - verticalVelocity;
-        var verticalAssist = verticalError * verticalVelocityGain;
-        var collective = Mathf.Clamp01(hoverThrottle + verticalInput * collectiveResponse);
-        var upDot = Mathf.Max(minLiftUpDot, Vector3.Dot(transform.up, Vector3.up));
-        var compensation = Mathf.Min(1f / upDot, maxLiftCompensation);
-        var thrustAccel = enginePower * maxLiftAcceleration * collective * compensation + verticalAssist;
+        var verticalAssist = verticalError * liftSettings.verticalVelocityGain;
+        var upDot = Mathf.Max(liftSettings.minLiftUpDot, Vector3.Dot(transform.up, Vector3.up));
+        var compensation = Mathf.Min(1f / upDot, liftSettings.maxLiftCompensation);
+        var gravityHoverCollective = Mathf.Clamp01(Physics.gravity.magnitude / Mathf.Max(0.001f, liftSettings.maxAcceleration * Mathf.Max(0.08f, enginePower) * compensation));
+        var hoverBias = (liftSettings.hoverThrottle - 0.5f) * 0.2f;
+        var collective = Mathf.Clamp01(gravityHoverCollective + hoverBias + altitudeHold.hoverCollectiveTrim + verticalInput * liftSettings.collectiveResponse);
+        var thrustAccel = enginePower * liftSettings.maxAcceleration * collective * compensation + verticalAssist;
 
-        var uprightBlend = IsSimpleControl ? simpleLiftUprightBlend : complexLiftUprightBlend;
+        var uprightBlend = IsSimpleControl ? simpleControl.liftUprightBlend : complexControl.liftUprightBlend;
         var liftDirection = Vector3.Slerp(transform.up, Vector3.up, uprightBlend).normalized;
         if (Vector3.Dot(liftDirection, Vector3.up) < 0f) liftDirection = Vector3.up;
         body.AddForce(liftDirection * thrustAccel, ForceMode.Acceleration);
@@ -326,18 +484,18 @@ public class HelicopterFlightController : MonoBehaviour
 
         if (IsSimpleControl)
         {
-            var desired = new Vector3(moveInput.x, 0f, moveInput.y) * simpleMaxHorizontalSpeed;
+            var desired = new Vector3(moveInput.x, 0f, moveInput.y) * simpleControl.maxHorizontalSpeed;
             var error = desired - planarVelocity;
-            var gain = desired.sqrMagnitude > 0.0001f ? simplePlanarVelocityGain : simplePlanarBrakeGain;
-            var accel = Vector3.ClampMagnitude(error * gain, simpleMaxPlanarAcceleration);
+            var gain = desired.sqrMagnitude > 0.0001f ? simpleControl.planarVelocityGain : simpleControl.planarBrakeGain;
+            var accel = Vector3.ClampMagnitude(error * gain, simpleControl.maxPlanarAcceleration);
             body.AddForce(accel, ForceMode.Acceleration);
 
             var local = transform.InverseTransformDirection(accel);
-            currentLiftTiltInput = simpleMaxPlanarAcceleration <= 0.001f
+            currentLiftTiltInput = simpleControl.maxPlanarAcceleration <= 0.001f
                 ? Vector2.zero
                 : new Vector2(
-                    Mathf.Clamp(local.x / simpleMaxPlanarAcceleration, -1f, 1f),
-                    Mathf.Clamp(local.z / simpleMaxPlanarAcceleration, -1f, 1f)
+                    Mathf.Clamp(local.x / simpleControl.maxPlanarAcceleration, -1f, 1f),
+                    Mathf.Clamp(local.z / simpleControl.maxPlanarAcceleration, -1f, 1f)
                 );
             return;
         }
@@ -346,35 +504,39 @@ public class HelicopterFlightController : MonoBehaviour
         var desiredTilt = new Vector2(localInput.x, localInput.y);
         currentLiftTiltInput = desiredTilt;
 
-        if (complexCyclicAssistAcceleration > 0.001f)
+        if (complexControl.cyclicAssistAcceleration > 0.001f)
         {
-            var assistLocal = new Vector3(0f, 0f, desiredTilt.y) * complexCyclicAssistAcceleration;
+            var assistLocal = new Vector3(
+                desiredTilt.x * complexControl.lateralStrafeAssistAcceleration,
+                0f,
+                desiredTilt.y * complexControl.cyclicAssistAcceleration
+            );
             var assistWorld = transform.TransformDirection(assistLocal);
             body.AddForce(assistWorld * enginePower, ForceMode.Acceleration);
         }
-        body.AddForce(-planarVelocity * complexPlanarDamping, ForceMode.Acceleration);
+        body.AddForce(-planarVelocity * complexControl.planarDamping, ForceMode.Acceleration);
     }
 
     private void ApplyWindForce()
     {
-        if (!enableWind) return;
+        if (!wind.enabled) return;
         if (enginePower <= 0.001f) return;
 
-        var t = Time.time * windFrequency;
+        var t = Time.time * wind.frequency;
         var windX = Mathf.PerlinNoise(windSeedX, t) * 2f - 1f;
         var windY = Mathf.PerlinNoise(windSeedY, t) * 2f - 1f;
         var windZ = Mathf.PerlinNoise(windSeedZ, t) * 2f - 1f;
-        body.AddForce(new Vector3(windX * windHorizontalAcceleration, windY * windVerticalAcceleration, windZ * windHorizontalAcceleration), ForceMode.Acceleration);
+        body.AddForce(new Vector3(windX * wind.horizontalAcceleration, windY * wind.verticalAcceleration, windZ * wind.horizontalAcceleration), ForceMode.Acceleration);
     }
 
     private void UpdateHeading(Vector2 moveInput, Vector3 planarVelocity, float dt)
     {
         if (IsSimpleControl)
         {
-            if (simpleHoldHeading) return;
-            if (planarVelocity.sqrMagnitude <= simpleYawToVelocityMinSpeed * simpleYawToVelocityMinSpeed) return;
+            if (simpleControl.holdHeading) return;
+            if (planarVelocity.sqrMagnitude <= simpleControl.yawToVelocityMinSpeed * simpleControl.yawToVelocityMinSpeed) return;
             var simpleVelHeading = planarVelocity.normalized;
-            headingForward = Vector3.Slerp(headingForward, simpleVelHeading, 1f - Mathf.Exp(-simpleYawFollowSpeed * dt));
+            headingForward = Vector3.Slerp(headingForward, simpleVelHeading, 1f - Mathf.Exp(-simpleControl.yawFollowSpeed * dt));
             return;
         }
 
@@ -383,19 +545,19 @@ public class HelicopterFlightController : MonoBehaviour
             if (headingForward.sqrMagnitude <= 0.0001f)
                 headingForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
 
-            var yawDelta = moveInput.x * complexYawRate * dt;
+            var yawDelta = moveInput.x * complexControl.yawRate * dt;
             headingForward = Quaternion.AngleAxis(yawDelta, Vector3.up) * headingForward;
             headingForward = Vector3.ProjectOnPlane(headingForward, Vector3.up).normalized;
             return;
         }
 
         if (moveInput.sqrMagnitude > 0.0004f) return;
-        if (!autoYawToVelocity) return;
-        if (planarVelocity.sqrMagnitude <= complexYawToVelocityMinSpeed * complexYawToVelocityMinSpeed) return;
+        if (!complexControl.autoYawToVelocity) return;
+        if (planarVelocity.sqrMagnitude <= complexControl.yawToVelocityMinSpeed * complexControl.yawToVelocityMinSpeed) return;
         if (Vector3.Dot(planarVelocity.normalized, transform.forward) < 0f) return;
 
         var velHeading = planarVelocity.normalized;
-        headingForward = Vector3.Slerp(headingForward, velHeading, 1f - Mathf.Exp(-complexYawFollowSpeed * dt));
+        headingForward = Vector3.Slerp(headingForward, velHeading, 1f - Mathf.Exp(-complexControl.yawFollowSpeed * dt));
     }
 
     private void ApplyYawTorque()
@@ -408,7 +570,7 @@ public class HelicopterFlightController : MonoBehaviour
 
         var yawError = Vector3.SignedAngle(currentForward, headingForward, Vector3.up) * Mathf.Deg2Rad;
         var yawRate = Vector3.Dot(body.angularVelocity, Vector3.up);
-        var yawTorque = Mathf.Clamp(yawError * yawStiffness - yawRate * yawDamping, -maxYawTorque, maxYawTorque);
+        var yawTorque = Mathf.Clamp(yawError * attitude.yawStiffness - yawRate * attitude.yawDamping, -attitude.maxYawTorque, attitude.maxYawTorque);
         body.AddTorque(Vector3.up * yawTorque, ForceMode.Acceleration);
     }
 
@@ -419,13 +581,13 @@ public class HelicopterFlightController : MonoBehaviour
 
         if (IsSimpleControl)
         {
-            targetPitch = currentLiftTiltInput.y * maxComplexPitch;
-            targetRoll = -currentLiftTiltInput.x * maxComplexRoll;
+            targetPitch = currentLiftTiltInput.y * complexControl.maxPitch;
+            targetRoll = -currentLiftTiltInput.x * complexControl.maxRoll;
         }
         else
         {
-            targetPitch = moveInput.y * maxComplexPitch;
-            targetRoll = -moveInput.x * maxComplexRoll;
+            targetPitch = moveInput.y * complexControl.maxPitch;
+            targetRoll = -moveInput.x * complexControl.maxRoll;
         }
 
         var currentPitch = Mathf.Asin(Mathf.Clamp(Vector3.Dot(transform.forward, Vector3.up), -1f, 1f)) * Mathf.Rad2Deg;
@@ -436,13 +598,13 @@ public class HelicopterFlightController : MonoBehaviour
         var pitchRate = Vector3.Dot(body.angularVelocity, transform.right);
         var rollRate = Vector3.Dot(body.angularVelocity, transform.forward);
 
-        var pitchTorque = Mathf.Clamp(pitchError * tiltStiffness - pitchRate * tiltDamping, -maxTiltTorque, maxTiltTorque);
-        var rollTorque = Mathf.Clamp(rollError * tiltStiffness - rollRate * tiltDamping, -maxTiltTorque, maxTiltTorque);
+        var pitchTorque = Mathf.Clamp(pitchError * attitude.tiltStiffness - pitchRate * attitude.tiltDamping, -attitude.maxTiltTorque, attitude.maxTiltTorque);
+        var rollTorque = Mathf.Clamp(rollError * attitude.tiltStiffness - rollRate * attitude.tiltDamping, -attitude.maxTiltTorque, attitude.maxTiltTorque);
         body.AddTorque(transform.right * pitchTorque, ForceMode.Acceleration);
         body.AddTorque(transform.forward * rollTorque, ForceMode.Acceleration);
 
         var uprightError = Vector3.Cross(transform.up, Vector3.up);
-        body.AddTorque(uprightError * emergencyUprightTorque, ForceMode.Acceleration);
+        body.AddTorque(uprightError * attitude.emergencyUprightTorque, ForceMode.Acceleration);
     }
 
     private void ApplyLandedLock(Vector3 planarVelocity)
@@ -450,25 +612,25 @@ public class HelicopterFlightController : MonoBehaviour
         if (!isLanded) return;
         if (engineOn) return;
 
-        body.AddForce(-planarVelocity * landedLockForce, ForceMode.Acceleration);
-        body.AddTorque(-body.angularVelocity * landedLockTorque, ForceMode.Acceleration);
+        body.AddForce(-planarVelocity * ground.landedLockForce, ForceMode.Acceleration);
+        body.AddTorque(-body.angularVelocity * ground.landedLockTorque, ForceMode.Acceleration);
     }
 
     private void ApplyAngularRateLimit()
     {
-        if (maxPitchRollRate <= 0.001f) return;
+        if (attitude.maxPitchRollRate <= 0.001f) return;
 
         var rightRate = Vector3.Dot(body.angularVelocity, transform.right);
         var forwardRate = Vector3.Dot(body.angularVelocity, transform.forward);
 
-        var rightExcess = Mathf.Abs(rightRate) - maxPitchRollRate;
+        var rightExcess = Mathf.Abs(rightRate) - attitude.maxPitchRollRate;
         if (rightExcess > 0f)
         {
             var correction = -Mathf.Sign(rightRate) * rightExcess * 10f;
             body.AddTorque(transform.right * correction, ForceMode.Acceleration);
         }
 
-        var forwardExcess = Mathf.Abs(forwardRate) - maxPitchRollRate;
+        var forwardExcess = Mathf.Abs(forwardRate) - attitude.maxPitchRollRate;
         if (forwardExcess > 0f)
         {
             var correction = -Mathf.Sign(forwardRate) * forwardExcess * 10f;
@@ -481,7 +643,7 @@ public class HelicopterFlightController : MonoBehaviour
         var input = resolvedMoveAction != null ? resolvedMoveAction.ReadValue<Vector2>() : Vector2.zero;
         if (input.sqrMagnitude > 1f) input.Normalize();
         if (input.sqrMagnitude > 0.0001f) return input;
-        if (!keyboardFallbackInput) return input;
+        if (!inputSettings.keyboardFallback) return input;
         return ReadKeyboardMoveInput();
     }
 
@@ -490,7 +652,7 @@ public class HelicopterFlightController : MonoBehaviour
         var ascendPressed = resolvedAscendAction != null && resolvedAscendAction.IsPressed();
         var descendPressed = resolvedDescendAction != null && resolvedDescendAction.IsPressed();
 
-        if (!ascendPressed && !descendPressed && keyboardFallbackInput)
+        if (!ascendPressed && !descendPressed && inputSettings.keyboardFallback)
         {
             var keyboard = Keyboard.current;
             if (keyboard != null)
@@ -524,9 +686,9 @@ public class HelicopterFlightController : MonoBehaviour
 
     private void ResolveActions()
     {
-        resolvedMoveAction = moveAction != null ? moveAction.action : null;
-        resolvedAscendAction = ascendAction != null ? ascendAction.action : null;
-        resolvedDescendAction = descendAction != null ? descendAction.action : null;
+        resolvedMoveAction = inputSettings.moveAction != null ? inputSettings.moveAction.action : null;
+        resolvedAscendAction = inputSettings.ascendAction != null ? inputSettings.ascendAction.action : null;
+        resolvedDescendAction = inputSettings.descendAction != null ? inputSettings.descendAction.action : null;
     }
 
     private void SetActionsEnabled(bool enabled)
@@ -548,13 +710,13 @@ public class HelicopterFlightController : MonoBehaviour
         if (body == null) return;
 
         body.useGravity = true;
-        if (!applyRigidbodySettings) return;
+        if (!physicsSettings.applySettings) return;
 
-        body.mass = rigidbodyMass;
-        body.linearDamping = linearDamping;
-        body.angularDamping = angularDamping;
-        body.maxAngularVelocity = maxAngularSpeed;
-        body.centerOfMass = centerOfMassOffset;
+        body.mass = physicsSettings.mass;
+        body.linearDamping = physicsSettings.linearDamping;
+        body.angularDamping = physicsSettings.angularDamping;
+        body.maxAngularVelocity = physicsSettings.maxAngularSpeed;
+        body.centerOfMass = physicsSettings.centerOfMassOffset;
         body.ResetInertiaTensor();
         body.interpolation = RigidbodyInterpolation.Interpolate;
         body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
@@ -562,7 +724,7 @@ public class HelicopterFlightController : MonoBehaviour
 
     private void EnsurePhysicsCanSimulate()
     {
-        if (!ensureRigidbodyCanSimulate || body == null) return;
+        if (!physicsSettings.ensureCanSimulate || body == null) return;
 
         if (body.isKinematic) body.isKinematic = false;
 
@@ -585,7 +747,7 @@ public class HelicopterFlightController : MonoBehaviour
 
     private void UpdateAutoShutdown(Vector2 moveInput, float verticalInputRaw, float dt)
     {
-        if (!autoShutdownWhenLanded || !engineOn)
+        if (!autoShutdown.enabled || !engineOn)
         {
             landedShutdownTimer = 0f;
             return;
@@ -597,8 +759,9 @@ public class HelicopterFlightController : MonoBehaviour
             return;
         }
 
-        var hasControlIntent = moveInput.sqrMagnitude > autoShutdownMoveDeadzone * autoShutdownMoveDeadzone ||
-                               Mathf.Abs(verticalInputRaw) > autoShutdownVerticalDeadzone;
+        var hasHorizontalIntent = moveInput.sqrMagnitude > autoShutdown.moveDeadzone * autoShutdown.moveDeadzone;
+        var hasUpwardIntent = verticalInputRaw > autoShutdown.verticalDeadzone;
+        var hasControlIntent = hasHorizontalIntent || hasUpwardIntent;
         if (hasControlIntent)
         {
             landedShutdownTimer = 0f;
@@ -606,7 +769,7 @@ public class HelicopterFlightController : MonoBehaviour
         }
 
         landedShutdownTimer += dt;
-        if (landedShutdownTimer < landedShutdownDelay) return;
+        if (landedShutdownTimer < autoShutdown.delay) return;
 
         engineOn = false;
         landedShutdownTimer = 0f;
@@ -620,26 +783,27 @@ public class HelicopterFlightController : MonoBehaviour
 
         var v = body.linearVelocity;
         var planarSpeed = new Vector2(v.x, v.z).magnitude;
-        return Mathf.Abs(v.y) <= engineShutdownMaxVerticalSpeed &&
-               planarSpeed <= engineShutdownMaxPlanarSpeed;
+        return Mathf.Abs(v.y) <= autoShutdown.maxVerticalSpeed &&
+               planarSpeed <= autoShutdown.maxPlanarSpeed;
     }
 
     private bool IsNearGroundForShutdown()
     {
         if (isGrounded || isLanded) return true;
-        return IsNearGround(Mathf.Max(landingProbeDistance, autoShutdownGroundProbeDistance));
+        return IsNearGround(Mathf.Max(ground.landingProbeDistance, autoShutdown.groundProbeDistance));
     }
 
     private bool IsNearGround(float probeDistance)
     {
         if (body == null) return false;
+        var throwawayY = float.NegativeInfinity;
 
         if (TryGetColliderBounds(out var bounds))
         {
-            var originY = bounds.min.y + groundProbeSkin;
-            var distance = probeDistance + groundProbeSkin;
+            var originY = bounds.min.y + ground.probeSkin;
+            var distance = probeDistance + ground.probeSkin;
             var center = new Vector3(bounds.center.x, originY, bounds.center.z);
-            if (Physics.Raycast(center, Vector3.down, distance, groundLayers, QueryTriggerInteraction.Ignore))
+            if (RaycastGroundY(center, distance, ref throwawayY))
                 return true;
 
             var offsetX = Mathf.Max(0.1f, bounds.extents.x * 0.5f);
@@ -650,15 +814,176 @@ public class HelicopterFlightController : MonoBehaviour
             var p3 = center + new Vector3(offsetX, 0f, -offsetZ);
             var p4 = center + new Vector3(-offsetX, 0f, -offsetZ);
 
-            if (Physics.Raycast(p1, Vector3.down, distance, groundLayers, QueryTriggerInteraction.Ignore)) return true;
-            if (Physics.Raycast(p2, Vector3.down, distance, groundLayers, QueryTriggerInteraction.Ignore)) return true;
-            if (Physics.Raycast(p3, Vector3.down, distance, groundLayers, QueryTriggerInteraction.Ignore)) return true;
-            if (Physics.Raycast(p4, Vector3.down, distance, groundLayers, QueryTriggerInteraction.Ignore)) return true;
+            if (RaycastGroundY(p1, distance, ref throwawayY)) return true;
+            if (RaycastGroundY(p2, distance, ref throwawayY)) return true;
+            if (RaycastGroundY(p3, distance, ref throwawayY)) return true;
+            if (RaycastGroundY(p4, distance, ref throwawayY)) return true;
             return false;
         }
 
-        var fallbackOrigin = body.worldCenterOfMass + Vector3.up * groundProbeSkin;
-        return Physics.Raycast(fallbackOrigin, Vector3.down, probeDistance + groundProbeSkin, groundLayers, QueryTriggerInteraction.Ignore);
+        var fallbackOrigin = body.worldCenterOfMass + Vector3.up * ground.probeSkin;
+        return RaycastGroundY(fallbackOrigin, probeDistance + ground.probeSkin, ref throwawayY);
+    }
+
+    private bool TryGetGroundHeightBelow(Vector3 referencePosition, float probeDistance, out float groundY)
+    {
+        groundY = 0f;
+        var found = false;
+        var bestY = float.NegativeInfinity;
+
+        if (TryGetColliderBounds(out var bounds))
+        {
+            var castHeight = bounds.extents.y + 2f;
+            var distance = probeDistance + castHeight;
+            var center = new Vector3(referencePosition.x, referencePosition.y + castHeight, referencePosition.z);
+            var offsetX = Mathf.Max(0.15f, bounds.extents.x * 0.55f);
+            var offsetZ = Mathf.Max(0.15f, bounds.extents.z * 0.55f);
+
+            if (RaycastGroundY(center, distance, ref bestY)) found = true;
+            if (RaycastGroundY(center + new Vector3(offsetX, 0f, offsetZ), distance, ref bestY)) found = true;
+            if (RaycastGroundY(center + new Vector3(-offsetX, 0f, offsetZ), distance, ref bestY)) found = true;
+            if (RaycastGroundY(center + new Vector3(offsetX, 0f, -offsetZ), distance, ref bestY)) found = true;
+            if (RaycastGroundY(center + new Vector3(-offsetX, 0f, -offsetZ), distance, ref bestY)) found = true;
+        }
+        else
+        {
+            var origin = referencePosition + Vector3.up * 2f;
+            if (RaycastGroundY(origin, probeDistance + 2f, ref bestY)) found = true;
+        }
+
+        groundY = bestY;
+        return found;
+    }
+
+    private bool TryGetGroundHeightAbove(Vector3 referencePosition, float probeDistance, out float groundY)
+    {
+        groundY = 0f;
+        var found = false;
+        var bestY = float.PositiveInfinity;
+
+        if (TryGetColliderBounds(out var bounds))
+        {
+            var castHeight = bounds.extents.y + 2f;
+            var distance = probeDistance + castHeight;
+            var center = new Vector3(referencePosition.x, referencePosition.y - castHeight, referencePosition.z);
+            var offsetX = Mathf.Max(0.15f, bounds.extents.x * 0.55f);
+            var offsetZ = Mathf.Max(0.15f, bounds.extents.z * 0.55f);
+
+            if (RaycastGroundYUp(center, distance, referencePosition.y, ref bestY)) found = true;
+            if (RaycastGroundYUp(center + new Vector3(offsetX, 0f, offsetZ), distance, referencePosition.y, ref bestY)) found = true;
+            if (RaycastGroundYUp(center + new Vector3(-offsetX, 0f, offsetZ), distance, referencePosition.y, ref bestY)) found = true;
+            if (RaycastGroundYUp(center + new Vector3(offsetX, 0f, -offsetZ), distance, referencePosition.y, ref bestY)) found = true;
+            if (RaycastGroundYUp(center + new Vector3(-offsetX, 0f, -offsetZ), distance, referencePosition.y, ref bestY)) found = true;
+        }
+        else
+        {
+            var origin = referencePosition - Vector3.up * 2f;
+            if (RaycastGroundYUp(origin, probeDistance + 2f, referencePosition.y, ref bestY)) found = true;
+        }
+
+        if (!found) return false;
+        groundY = bestY;
+        return true;
+    }
+
+    private bool TryGetNearestGroundHeightAround(Vector3 referencePosition, float probeDistance, out float groundY)
+    {
+        groundY = 0f;
+        var hasBelow = TryGetGroundHeightBelow(referencePosition, probeDistance, out var belowY);
+        var hasAbove = TryGetGroundHeightAbove(referencePosition, probeDistance, out var aboveY);
+
+        if (!hasBelow && !hasAbove) return false;
+        if (hasBelow && !hasAbove) { groundY = belowY; return true; }
+        if (!hasBelow && hasAbove) { groundY = aboveY; return true; }
+
+        var belowDistance = Mathf.Abs(referencePosition.y - belowY);
+        var aboveDistance = Mathf.Abs(aboveY - referencePosition.y);
+        groundY = belowDistance <= aboveDistance ? belowY : aboveY;
+        return true;
+    }
+
+    private bool TryGetPredictiveGroundHeight(Vector3 planarVelocity, out float groundY)
+    {
+        groundY = 0f;
+        if (body == null) return false;
+
+        var speed = planarVelocity.magnitude;
+        var forward = speed > 0.15f
+            ? planarVelocity.normalized
+            : Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        var right = Vector3.Cross(Vector3.up, forward).normalized;
+
+        var lookAheadDistance = Mathf.Min(zLock.lookAheadMaxDistance, speed * zLock.lookAheadTime);
+        var center = body.position + forward * lookAheadDistance;
+
+        var found = false;
+        var bestY = float.NegativeInfinity;
+
+        if (TryGetGroundHeightBelow(center, zLock.groundClearanceProbeDistance, out var y0)) { bestY = Mathf.Max(bestY, y0); found = true; }
+        if (TryGetGroundHeightBelow(center + forward * zLock.sampleRadius, zLock.groundClearanceProbeDistance, out var y1)) { bestY = Mathf.Max(bestY, y1); found = true; }
+        if (TryGetGroundHeightBelow(center + right * zLock.sampleRadius, zLock.groundClearanceProbeDistance, out var y2)) { bestY = Mathf.Max(bestY, y2); found = true; }
+        if (TryGetGroundHeightBelow(center - right * zLock.sampleRadius, zLock.groundClearanceProbeDistance, out var y3)) { bestY = Mathf.Max(bestY, y3); found = true; }
+        if (TryGetGroundHeightBelow(center - forward * (zLock.sampleRadius * 0.5f), zLock.groundClearanceProbeDistance, out var y4)) { bestY = Mathf.Max(bestY, y4); found = true; }
+
+        groundY = bestY;
+        return found;
+    }
+
+    private bool RaycastGroundY(Vector3 origin, float distance, ref float bestY)
+    {
+        var hitCount = Physics.RaycastNonAlloc(origin, Vector3.down, groundHitBuffer, distance, ground.groundLayers, QueryTriggerInteraction.Ignore);
+        if (hitCount <= 0 && ground.groundLayers != ~0)
+            hitCount = Physics.RaycastNonAlloc(origin, Vector3.down, groundHitBuffer, distance, ~0, QueryTriggerInteraction.Ignore);
+        if (hitCount <= 0) return false;
+
+        var found = false;
+        for (var i = 0; i < hitCount; i++)
+        {
+            var hit = groundHitBuffer[i];
+            if (hit.collider == null) continue;
+            if (IsSelfCollider(hit.collider)) continue;
+            if (!found || hit.point.y > bestY) bestY = hit.point.y;
+            found = true;
+        }
+
+        return found;
+    }
+
+    private bool RaycastGroundYUp(Vector3 origin, float distance, float minY, ref float bestY)
+    {
+        var hitCount = Physics.RaycastNonAlloc(origin, Vector3.up, groundHitBuffer, distance, ground.groundLayers, QueryTriggerInteraction.Ignore);
+        if (hitCount <= 0 && ground.groundLayers != ~0)
+            hitCount = Physics.RaycastNonAlloc(origin, Vector3.up, groundHitBuffer, distance, ~0, QueryTriggerInteraction.Ignore);
+        if (hitCount <= 0) return false;
+
+        var found = false;
+        for (var i = 0; i < hitCount; i++)
+        {
+            var hit = groundHitBuffer[i];
+            if (hit.collider == null) continue;
+            if (IsSelfCollider(hit.collider)) continue;
+            if (hit.point.y < minY) continue;
+            if (!found || hit.point.y < bestY) bestY = hit.point.y;
+            found = true;
+        }
+
+        return found;
+    }
+
+    private static bool TrySampleTerrainY(Vector3 position, out float y)
+    {
+        y = 0f;
+        var terrain = Terrain.activeTerrain;
+        if (terrain == null) return false;
+        y = terrain.SampleHeight(position) + terrain.transform.position.y;
+        return true;
+    }
+
+    private bool IsSelfCollider(Collider col)
+    {
+        if (col == null) return false;
+        return col.transform.IsChildOf(transform);
     }
 
     private void CacheColliders()
@@ -691,3 +1016,5 @@ public class HelicopterFlightController : MonoBehaviour
         return hasBounds;
     }
 }
+
+
