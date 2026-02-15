@@ -1,0 +1,24 @@
+{
+    "name": "Evo.UI.Editor",
+    "rootNamespace": "",
+    "references": [
+        "Evo",
+        "Evo.Editor",
+        "Evo.UI",
+        "Evo.Localization",
+        "Evo.Localization.Editor",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

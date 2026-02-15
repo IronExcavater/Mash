@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: b3c3cd7b97fd0ce44911e94c80db125e
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {fileID: 2800000, guid: 6ba70e3a1b7afd349a2241ab9c10f1e6, type: 3}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 310303
+  packageName: Evo UI - Modern UI Framework
+  packageVersion: 1.7.0
+  assetPath: Assets/Evo/Evo UI/Scripts/UI Elements/List View/ListViewStyle.cs
+  uploadId: 856698

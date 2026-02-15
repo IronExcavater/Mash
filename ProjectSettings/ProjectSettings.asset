@@ -825,7 +825,24 @@ PlayerSettings:
   webGLCloseOnQuit: 0
   webWasm2023: 0
   webEnableSubmoduleStrippingCompatibility: 0
-  scriptingDefineSymbols: {}
+  scriptingDefineSymbols:
+    Android: KAMGAM_UGUI_BLURRED_BACKGROUND
+    EmbeddedLinux: KAMGAM_UGUI_BLURRED_BACKGROUND
+    GameCoreXboxOne: KAMGAM_UGUI_BLURRED_BACKGROUND
+    Kepler: KAMGAM_UGUI_BLURRED_BACKGROUND
+    LinuxHeadlessSimulation: KAMGAM_UGUI_BLURRED_BACKGROUND
+    Nintendo Switch: KAMGAM_UGUI_BLURRED_BACKGROUND
+    Nintendo Switch 2: KAMGAM_UGUI_BLURRED_BACKGROUND
+    PS4: KAMGAM_UGUI_BLURRED_BACKGROUND
+    PS5: KAMGAM_UGUI_BLURRED_BACKGROUND
+    QNX: KAMGAM_UGUI_BLURRED_BACKGROUND
+    Standalone: KAMGAM_UGUI_BLURRED_BACKGROUND
+    VisionOS: KAMGAM_UGUI_BLURRED_BACKGROUND
+    WebGL: KAMGAM_UGUI_BLURRED_BACKGROUND
+    Windows Store Apps: KAMGAM_UGUI_BLURRED_BACKGROUND
+    XboxOne: KAMGAM_UGUI_BLURRED_BACKGROUND
+    iPhone: KAMGAM_UGUI_BLURRED_BACKGROUND
+    tvOS: KAMGAM_UGUI_BLURRED_BACKGROUND
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend:
