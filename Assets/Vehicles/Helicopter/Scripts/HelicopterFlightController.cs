@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -50,7 +51,7 @@ public class HelicopterFlightController : MonoBehaviour
     private class InputSettings
     {
         public bool autoEnableActions = true;
-        public bool keyboardFallback = true;
+        public bool keyboardFallback = false;
         public InputActionReference moveAction;
         public InputActionReference ascendAction;
         public InputActionReference descendAction;
@@ -124,6 +125,23 @@ public class HelicopterFlightController : MonoBehaviour
     }
 
     [System.Serializable]
+    private class GroundTagFilterSettings
+    {
+        public bool useGroundTagFiltering = true;
+        public bool allowUntaggedWhenFiltering = true;
+        public string[] allowedGroundTags = { "Terrain", "Ground", "GroundSurface", "Runway", "HoverGround" };
+        public string[] ignoredGroundTags = { "MilitaryBase", "BaseBuilding", "BaseStructure" };
+    }
+
+    [System.Serializable]
+    private class HoverZoneSettings
+    {
+        public bool enabled = true;
+        public bool requireTagMatch = true;
+        public string[] acceptedZoneTags = { "HoverHeightZone", "HelicopterHoverZone" };
+    }
+
+    [System.Serializable]
     private class SpawnSettings
     {
         public float clearanceAboveGround = 10f;
@@ -192,6 +210,10 @@ public class HelicopterFlightController : MonoBehaviour
     [SerializeField] private WindSettings wind = new WindSettings();
     [FieldHeader("Ground")]
     [SerializeField] private GroundContactSettings ground = new GroundContactSettings();
+    [FieldHeader("Ground Tag Filtering")]
+    [SerializeField] private GroundTagFilterSettings groundTagFilter = new GroundTagFilterSettings();
+    [FieldHeader("Hover Zones")]
+    [SerializeField] private HoverZoneSettings hoverZones = new HoverZoneSettings();
     [FieldHeader("Spawn")]
     [SerializeField] private SpawnSettings spawn = new SpawnSettings();
     [FieldHeader("Ground Auto Engine Off")]
@@ -224,11 +246,22 @@ public class HelicopterFlightController : MonoBehaviour
     private Collider[] cachedColliders;
     private readonly RaycastHit[] groundHitBuffer = new RaycastHit[16];
     private bool startupPlacementComplete;
+    private readonly Dictionary<int, float> activeHoverZoneOffsets = new Dictionary<int, float>();
 
     public bool IsInputEnabled => inputEnabled;
     public bool IsEngineOn => engineOn;
     public bool IsGrounded => isGrounded;
     public bool IsLanded => isLanded;
+    public float CurrentVerticalSpeed => body != null ? body.linearVelocity.y : 0f;
+    public float CurrentPlanarSpeed
+    {
+        get
+        {
+            if (body == null) return 0f;
+            var velocity = body.linearVelocity;
+            return new Vector2(velocity.x, velocity.z).magnitude;
+        }
+    }
     public float EnginePower01 => enginePower;
     public Vector2 CurrentMoveInput => currentMoveInput;
     public Vector2 CurrentLiftTiltInput => currentLiftTiltInput;
@@ -333,7 +366,7 @@ public class HelicopterFlightController : MonoBehaviour
         var probeDistance = Mathf.Max(spawn.groundProbeDistance, zLock.groundClearanceProbeDistance);
         if (TryGetNearestGroundHeightAround(body.position, probeDistance, out var nearestGroundY))
         {
-            var clearance = zLock.enabled ? zLock.groundClearance : spawn.clearanceAboveGround;
+            var clearance = (zLock.enabled ? zLock.groundClearance : spawn.clearanceAboveGround) + GetHoverZoneClearanceOffset();
             var targetY = nearestGroundY + clearance;
             heldAltitude = targetY;
             hasHeldAltitude = altitudeHold.enabled;
@@ -351,7 +384,7 @@ public class HelicopterFlightController : MonoBehaviour
 
         if (TrySampleTerrainY(body.position, out var terrainY))
         {
-            var clearance = zLock.enabled ? zLock.groundClearance : spawn.clearanceAboveGround;
+            var clearance = (zLock.enabled ? zLock.groundClearance : spawn.clearanceAboveGround) + GetHoverZoneClearanceOffset();
             var targetY = terrainY + clearance;
             heldAltitude = targetY;
             hasHeldAltitude = altitudeHold.enabled;
@@ -386,6 +419,27 @@ public class HelicopterFlightController : MonoBehaviour
         hasHeldAltitude = true;
     }
 
+    public void ApplyGroundHoldProfile(float clearance, float response, float damping, float maxCorrectionSpeed)
+    {
+        zLock.groundClearance = Mathf.Max(0.5f, clearance);
+        zLock.holdResponse = Mathf.Max(0.01f, response);
+        zLock.holdDamping = Mathf.Max(0.01f, damping);
+        zLock.maxCorrectionSpeed = Mathf.Max(0.01f, maxCorrectionSpeed);
+    }
+
+    public void RegisterHoverZone(HelicopterHoverHeightZone zone)
+    {
+        if (zone == null || !hoverZones.enabled) return;
+        if (hoverZones.requireTagMatch && !MatchesAnyTag(zone.gameObject, hoverZones.acceptedZoneTags)) return;
+        activeHoverZoneOffsets[zone.GetInstanceID()] = Mathf.Max(0f, zone.AdditionalClearance);
+    }
+
+    public void UnregisterHoverZone(HelicopterHoverHeightZone zone)
+    {
+        if (zone == null) return;
+        activeHoverZoneOffsets.Remove(zone.GetInstanceID());
+    }
+
     private void UpdateGroundState()
     {
         isGrounded = IsNearGround(ground.landingProbeDistance);
@@ -414,7 +468,7 @@ public class HelicopterFlightController : MonoBehaviour
         {
             if (TryGetPredictiveGroundHeight(planarVelocity, out var groundY))
             {
-                var desiredHoldAltitude = groundY + zLock.groundClearance;
+                var desiredHoldAltitude = groundY + zLock.groundClearance + GetHoverZoneClearanceOffset();
                 heldAltitude = desiredHoldAltitude;
 
                 hasHeldAltitude = true;
@@ -423,7 +477,7 @@ public class HelicopterFlightController : MonoBehaviour
 
             if (TryGetGroundHeightBelow(body.position, zLock.groundClearanceProbeDistance, out var fallbackGroundY))
             {
-                heldAltitude = fallbackGroundY + zLock.groundClearance;
+                heldAltitude = fallbackGroundY + zLock.groundClearance + GetHoverZoneClearanceOffset();
                 hasHeldAltitude = true;
                 return;
             }
@@ -943,6 +997,7 @@ public class HelicopterFlightController : MonoBehaviour
             var hit = groundHitBuffer[i];
             if (hit.collider == null) continue;
             if (IsSelfCollider(hit.collider)) continue;
+            if (!IsValidGroundCollider(hit.collider)) continue;
             if (!found || hit.point.y > bestY) bestY = hit.point.y;
             found = true;
         }
@@ -963,6 +1018,7 @@ public class HelicopterFlightController : MonoBehaviour
             var hit = groundHitBuffer[i];
             if (hit.collider == null) continue;
             if (IsSelfCollider(hit.collider)) continue;
+            if (!IsValidGroundCollider(hit.collider)) continue;
             if (hit.point.y < minY) continue;
             if (!found || hit.point.y < bestY) bestY = hit.point.y;
             found = true;
@@ -984,6 +1040,52 @@ public class HelicopterFlightController : MonoBehaviour
     {
         if (col == null) return false;
         return col.transform.IsChildOf(transform);
+    }
+
+    private float GetHoverZoneClearanceOffset()
+    {
+        if (!hoverZones.enabled || activeHoverZoneOffsets.Count == 0) return 0f;
+
+        var maxOffset = 0f;
+        foreach (var kv in activeHoverZoneOffsets)
+            if (kv.Value > maxOffset) maxOffset = kv.Value;
+        return maxOffset;
+    }
+
+    private bool IsValidGroundCollider(Collider col)
+    {
+        if (col == null) return false;
+        if (col.GetComponentInParent<HelicopterHoverHeightZone>() != null) return false;
+
+        if (groundTagFilter.ignoredGroundTags != null)
+        {
+            for (var i = 0; i < groundTagFilter.ignoredGroundTags.Length; i++)
+            {
+                var ignoredTag = groundTagFilter.ignoredGroundTags[i];
+                if (string.IsNullOrWhiteSpace(ignoredTag)) continue;
+                if (string.Equals(col.tag, ignoredTag)) return false;
+            }
+        }
+
+        if (!groundTagFilter.useGroundTagFiltering) return true;
+        if (string.Equals(col.tag, "Untagged"))
+            return groundTagFilter.allowUntaggedWhenFiltering;
+
+        return MatchesAnyTag(col.gameObject, groundTagFilter.allowedGroundTags);
+    }
+
+    private static bool MatchesAnyTag(GameObject go, string[] tags)
+    {
+        if (go == null || tags == null || tags.Length == 0) return false;
+        var currentTag = go.tag;
+        for (var i = 0; i < tags.Length; i++)
+        {
+            var allowedTag = tags[i];
+            if (string.IsNullOrWhiteSpace(allowedTag)) continue;
+            if (string.Equals(currentTag, allowedTag)) return true;
+        }
+
+        return false;
     }
 
     private void CacheColliders()

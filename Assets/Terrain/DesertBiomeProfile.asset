@@ -27,13 +27,26 @@ MonoBehaviour:
   mountainHeight: 0.72
   mountainWidthFromEdge01: 0.28
   mountainVariation: 0.5
-  baseLayer: {fileID: 8574412962073106934, guid: 25d686ecee8362d4ab6a94fc0a6a9f93, type: 2}
-  midLayer: {fileID: 8574412962073106934, guid: 385f7e6738277094c811a9194ba6b2da, type: 2}
-  steepLayer: {fileID: 8574412962073106934, guid: 6fa65f858a147b54798641cdfc977dae, type: 2}
-  tileSize: {x: 30, y: 30}
+  reserveCenterForBase: 1
+  baseCenterNormalized: {x: 0.5, y: 0.5}
+  baseRadius: 140
+  baseBlendDistance: 120
+  baseFlattenStrength: 0.74
+  baseInnerFlatRatio: 0.58
+  baseHeightOffset01: 0
+  excludeEnvironmentFromBase: 1
+  baseNoSpawnPadding: 10
+  baseLayer: {fileID: 8574412962073106934, guid: 9452e35d7aacb5243bf0524a2bb5153a, type: 2}
+  midLayer: {fileID: 8574412962073106934, guid: 9c5d5dc8207dee34b89e8eb1b30d4189, type: 2}
+  steepLayer: {fileID: 8574412962073106934, guid: ea319253884cee84fb8026603b7ff0b7, type: 2}
+  accentLayer: {fileID: 8574412962073106934, guid: 4c620feaaff7ea04eaaa84fed9fb0b7b, type: 2}
+  detailLayer: {fileID: 8574412962073106934, guid: 385f7e6738277094c811a9194ba6b2da, type: 2}
+  tileSize: {x: 11, y: 11}
   fallbackBaseColor: {r: 0.8, g: 0.7, b: 0.45, a: 1}
   fallbackMidColor: {r: 0.63, g: 0.56, b: 0.38, a: 1}
   fallbackSteepColor: {r: 0.45, g: 0.41, b: 0.34, a: 1}
+  fallbackAccentColor: {r: 0.53, g: 0.49, b: 0.38, a: 1}
+  fallbackDetailColor: {r: 0.34, g: 0.32, b: 0.29, a: 1}
   alphamapResolution: 1024
   slopeBlend:
     min: 0.01
@@ -46,9 +59,12 @@ MonoBehaviour:
   generateRoad: 0
   generateTrees: 1
   generateObjects: 1
+  treeCenterDensity: 0.72
+  treeCenterBiasExponent: 1.6
+  treeBaseExclusionPaddingMultiplier: 0
   roadWidth: 12
-  treeCount: 220
-  objectCount: 120
+  treeCount: 700
+  objectCount: 1000
   treePrefabs:
   - {fileID: 6018371075495249132, guid: 0e6f5009c0c39914f981ab9186ff4388, type: 3}
   - {fileID: 3991326285968246163, guid: f38b5be86b462b74a92aad5eac3997da, type: 3}
