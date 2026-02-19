@@ -1,29 +1,27 @@
 using System.Collections.Generic;
+using System.Collections;
 using UnityEngine;
-#if UNITY_EDITOR
-using UnityEditor;
-using UnityEditor.SceneManagement;
-#endif
+using UnityEngine.Events;
 
 [ExecuteAlways]
 [AddComponentMenu("World/Military Base Generator")]
 public class MilitaryBaseGenerator : MonoBehaviour
 {
     [Header("Terrain")]
-    [SerializeField] private bool autoAssignReferences = true;
-    [ConditionalField("autoAssignReferences", false)]
     [SerializeField] private Terrain targetTerrain;
     [SerializeField] private Vector2 baseCenterNormalized = new Vector2(0.5f, 0.5f);
     [SerializeField, Min(40f)] private float baseRadius = 76f;
     [SerializeField, Min(20f)] private float blendDistance = 90f;
-    [SerializeField, Range(0f, 1f)] private float terrainFlattenStrength = 0.72f;
+    [SerializeField, Range(0f, 1f)] private float terrainFlattenStrength = 0.92f;
+    [SerializeField] private bool forceSinglePassCoreFlatten = true;
     [SerializeField] private float baseHeightOffset = 0f;
 
-    [Header("Build Lifecycle")]
-    [SerializeField] private bool rebuildOnStart = true;
-    [SerializeField] private bool buildInEditMode = true;
+    [Header("Build")]
     [SerializeField] private bool flattenTerrain = true;
+    [SerializeField] private bool useAsyncBuildInPlayMode = true;
+    [SerializeField] private bool rebuildAfterTerrainGeneration = true;
     [SerializeField] private bool clearExistingChildren = true;
+    [SerializeField] private bool disableCollidersOnExistingTreesInsideBase = true;
     [SerializeField] private Transform baseRoot;
 
     [Header("Perimeter")]
@@ -54,8 +52,6 @@ public class MilitaryBaseGenerator : MonoBehaviour
 
     [Header("Helipad")]
     [SerializeField] private string helipadName = "CentralHelipad";
-    [SerializeField] private bool useHelipadVisualPrefab = false;
-    [ConditionalField("useHelipadVisualPrefab", true)]
     [SerializeField] private GameObject helipadVisualPrefab;
     [SerializeField, Min(0.6f)] private float helipadElevation = 2.4f;
     [SerializeField, Min(6f)] private float helipadRadius = 12.5f;
@@ -65,32 +61,74 @@ public class MilitaryBaseGenerator : MonoBehaviour
     [SerializeField] private Color helipadDarkConcreteColor = new Color(0.20f, 0.20f, 0.22f, 1f);
     [SerializeField] private Color helipadAccentColor = new Color(0.6f, 0.6f, 0.6f, 1f);
 
+    [Header("Base Hover Zone")]
+    [SerializeField] private bool createBaseHoverZone = true;
+    [SerializeField, Min(0f)] private float baseHoverExtraPadding = 16f;
+    [SerializeField, Min(2f)] private float baseHoverZoneHeight = 60f;
+    [SerializeField, Min(1f)] private float baseHoverCenterYOffset = 30f;
+    [SerializeField, Min(0f)] private float baseHoverFixedAltitudeAboveGround = 10f;
+    [SerializeField, Min(0f)] private float baseHoverMinimumAltitudeAboveGround = 8f;
+    [SerializeField, Min(0f)] private float baseHoverAdditionalClearance = 1.5f;
+
+    [Header("Events")]
+    [SerializeField] private UnityEvent onBuildCompleted;
+    public event System.Action BuildCompleted;
+
     private const string DefaultBaseRootName = "MilitaryBase";
     private readonly List<Vector3> junkPoints = new List<Vector3>();
     private float cachedWallTileLength = -1f;
+    private TerrainGenerator terrainGenerator;
+    private Coroutine buildRoutine;
 
     public Vector3 BaseCenterWorld => targetTerrain == null ? transform.position : GetBaseCenterWorld(targetTerrain);
     public float ProtectedRadius => Mathf.Max(baseRadius, Mathf.Max(wallWidth, wallLength) * 0.5f + 18f);
 
     private void Start()
     {
-        if (!Application.isPlaying || !rebuildOnStart) return;
+        if (!Application.isPlaying) return;
+        if (rebuildAfterTerrainGeneration)
+        {
+            if (terrainGenerator == null)
+                terrainGenerator = FindFirstObjectByType<TerrainGenerator>();
+            if (terrainGenerator != null)
+                return;
+        }
         BuildOrRefreshBase();
     }
 
-#if UNITY_EDITOR
     private void OnEnable()
     {
-        if (Application.isPlaying || !buildInEditMode || !gameObject.scene.IsValid()) return;
-        if (autoAssignReferences) AutoAssignPrefabsFromPack();
-        BuildOrRefreshBase();
+        SubscribeTerrainGeneration();
     }
-#endif
+
+    private void OnDisable()
+    {
+        UnsubscribeTerrainGeneration();
+        if (buildRoutine != null)
+        {
+            StopCoroutine(buildRoutine);
+            buildRoutine = null;
+        }
+    }
 
     [ContextMenu("Build Or Refresh Base")]
     public void BuildOrRefreshBase()
     {
-        ResolveTerrain();
+        if (Application.isPlaying && useAsyncBuildInPlayMode)
+        {
+            if (buildRoutine != null)
+                StopCoroutine(buildRoutine);
+            buildRoutine = StartCoroutine(BuildOrRefreshBaseRoutine());
+            return;
+        }
+
+        BuildOrRefreshBaseImmediate();
+    }
+
+    private void BuildOrRefreshBaseImmediate()
+    {
+        if (targetTerrain == null)
+            targetTerrain = FindFirstObjectByType<Terrain>();
         if (targetTerrain == null)
         {
             Debug.LogWarning("MilitaryBaseGenerator: No terrain found.", this);
@@ -112,13 +150,78 @@ public class MilitaryBaseGenerator : MonoBehaviour
         BuildWatchTowers(center);
         BuildPatternBuildings(center);
         BuildHelipad(center, centerGroundY);
+        if (!createBaseHoverZone) createBaseHoverZone = true;
+        BuildBaseHoverZone(center, centerGroundY);
         ScatterJunk(center);
+        if (disableCollidersOnExistingTreesInsideBase)
+            DisableCollidersOnExistingTrees(center);
+
+        onBuildCompleted?.Invoke();
+        BuildCompleted?.Invoke();
     }
 
-    private void ResolveTerrain()
+    private IEnumerator BuildOrRefreshBaseRoutine()
     {
-        if (!autoAssignReferences) return;
-        if (targetTerrain == null) targetTerrain = FindFirstObjectByType<Terrain>();
+        if (targetTerrain == null)
+            targetTerrain = FindFirstObjectByType<Terrain>();
+        if (targetTerrain == null)
+        {
+            Debug.LogWarning("MilitaryBaseGenerator: No terrain found.", this);
+            yield break;
+        }
+
+        var center = GetBaseCenterWorld(targetTerrain);
+        var centerGroundY = targetTerrain.SampleHeight(center) + targetTerrain.transform.position.y + baseHeightOffset;
+
+        if (flattenTerrain)
+        {
+            FlattenBaseArea(targetTerrain, center, centerGroundY);
+            yield return null;
+        }
+
+        ResolveBaseRoot();
+        if (baseRoot == null) yield break;
+        if (clearExistingChildren)
+        {
+            ClearChildren(baseRoot);
+        }
+
+        cachedWallTileLength = -1f;
+        BuildPerimeter(center);
+        BuildWatchTowers(center);
+        BuildPatternBuildings(center);
+        BuildHelipad(center, centerGroundY);
+        if (!createBaseHoverZone) createBaseHoverZone = true;
+        BuildBaseHoverZone(center, centerGroundY);
+        ScatterJunk(center);
+        if (disableCollidersOnExistingTreesInsideBase)
+            DisableCollidersOnExistingTrees(center);
+
+        onBuildCompleted?.Invoke();
+        BuildCompleted?.Invoke();
+        buildRoutine = null;
+    }
+
+    private void SubscribeTerrainGeneration()
+    {
+        if (!rebuildAfterTerrainGeneration) return;
+        if (terrainGenerator == null)
+            terrainGenerator = FindFirstObjectByType<TerrainGenerator>();
+        if (terrainGenerator == null) return;
+        terrainGenerator.GenerationCompleted -= HandleTerrainGenerated;
+        terrainGenerator.GenerationCompleted += HandleTerrainGenerated;
+    }
+
+    private void UnsubscribeTerrainGeneration()
+    {
+        if (terrainGenerator == null) return;
+        terrainGenerator.GenerationCompleted -= HandleTerrainGenerated;
+    }
+
+    private void HandleTerrainGenerated()
+    {
+        if (!rebuildAfterTerrainGeneration) return;
+        BuildOrRefreshBase();
     }
 
     private void ResolveBaseRoot()
@@ -160,7 +263,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
         var centerHeight = Mathf.Clamp01(targetY / Mathf.Max(0.001f, data.size.y));
         var radiusN = Mathf.Max(0.001f, baseRadius / Mathf.Max(0.001f, data.size.x));
         var blendN = Mathf.Max(0.001f, blendDistance / Mathf.Max(0.001f, data.size.x));
-        var innerRadiusN = radiusN * 0.42f;
+        var innerRadiusN = radiusN * 0.68f;
         var totalRadiusN = radiusN + blendN;
         var flatten = Mathf.Clamp01(terrainFlattenStrength);
 
@@ -178,18 +281,23 @@ public class MilitaryBaseGenerator : MonoBehaviour
                 float w;
                 if (distN <= innerRadiusN)
                 {
-                    var coreNoise = Mathf.PerlinNoise((wx + 67f) * 0.02f, (wz + 149f) * 0.02f);
-                    w = Mathf.Lerp(0.68f, 0.92f, coreNoise);
+                    w = 1f;
                 }
                 else if (distN <= radiusN)
                 {
                     var tInner = Mathf.InverseLerp(radiusN, innerRadiusN, distN);
-                    w = Mathf.SmoothStep(0.45f, 0.9f, tInner);
+                    w = Mathf.SmoothStep(0.72f, 1f, tInner);
                 }
                 else
                 {
                     var t = Mathf.InverseLerp(totalRadiusN, radiusN, distN);
-                    w = Mathf.SmoothStep(0f, 0.45f, t);
+                    w = Mathf.SmoothStep(0f, 0.3f, t);
+                }
+
+                if (forceSinglePassCoreFlatten && distN <= innerRadiusN)
+                {
+                    heights[y, x] = centerHeight;
+                    continue;
                 }
 
                 heights[y, x] = Mathf.Lerp(heights[y, x], centerHeight, w * flatten);
@@ -260,14 +368,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
         GameObject probe = null;
         try
         {
-#if UNITY_EDITOR
-            if (!Application.isPlaying)
-                probe = (GameObject)PrefabUtility.InstantiatePrefab(wallPrefab, baseRoot);
-            else
-                probe = Instantiate(wallPrefab, baseRoot);
-#else
             probe = Instantiate(wallPrefab, baseRoot);
-#endif
             if (probe == null)
             {
                 cachedWallTileLength = 5f;
@@ -447,9 +548,8 @@ public class MilitaryBaseGenerator : MonoBehaviour
     private void BuildHelipad(Vector3 center, float centerGroundY)
     {
         var y = centerGroundY + helipadElevation;
-        var usingPrefab = useHelipadVisualPrefab && helipadVisualPrefab != null;
         GameObject root;
-        if (usingPrefab)
+        if (helipadVisualPrefab != null)
         {
             root = Instantiate(helipadVisualPrefab);
             root.name = helipadName;
@@ -464,14 +564,63 @@ public class MilitaryBaseGenerator : MonoBehaviour
             BuildHelipadVisual(root.transform);
         }
 
-        if (!usingPrefab || root.transform.Find("HelipadSupport") == null)
+        if (root.transform.Find("HelipadSupport") == null)
             BuildHelipadSupports(root.transform, centerGroundY, y);
-        ApplyHelipadGeometryTuning(root.transform);
         ApplyHelipadMaterialTheme(root.transform);
 
         var zone = root.GetComponent<HelipadZone>();
         if (zone == null) zone = root.AddComponent<HelipadZone>();
         zone.SetZoneRadius(helipadZoneRadius);
+
+        var hoverZone = root.GetComponent<HelicopterHoverHeightZone>();
+        if (hoverZone == null) hoverZone = root.AddComponent<HelicopterHoverHeightZone>();
+        hoverZone.SetAdditionalClearance(0f);
+    }
+
+    private void BuildBaseHoverZone(Vector3 center, float centerGroundY)
+    {
+        if (baseRoot == null) return;
+        var effectiveZoneHeight = Mathf.Max(10f, baseHoverZoneHeight);
+        var effectiveCenterY = Mathf.Max(baseHoverCenterYOffset, effectiveZoneHeight * 0.5f);
+        var effectiveFixedAltitude = centerGroundY + Mathf.Max(2f, baseHoverFixedAltitudeAboveGround);
+        var effectiveMinAltitude = centerGroundY + Mathf.Max(1f, baseHoverMinimumAltitudeAboveGround);
+
+        var zoneTransform = baseRoot.Find("BaseHoverZone");
+        GameObject zoneGo;
+        if (zoneTransform == null)
+        {
+            zoneGo = new GameObject("BaseHoverZone");
+            zoneGo.transform.SetParent(baseRoot, false);
+        }
+        else
+        {
+            zoneGo = zoneTransform.gameObject;
+        }
+
+        zoneGo.transform.position = new Vector3(center.x, center.y, center.z);
+        zoneGo.transform.rotation = Quaternion.identity;
+
+        var box = zoneGo.GetComponent<BoxCollider>();
+        if (box == null) box = zoneGo.AddComponent<BoxCollider>();
+        box.isTrigger = true;
+        box.center = new Vector3(0f, effectiveCenterY, 0f);
+        box.size = new Vector3(
+            Mathf.Max(8f, wallWidth + baseHoverExtraPadding * 2f),
+            effectiveZoneHeight,
+            Mathf.Max(8f, wallLength + baseHoverExtraPadding * 2f));
+
+        var hoverZone = zoneGo.GetComponent<HelicopterHoverHeightZone>();
+        if (hoverZone == null) hoverZone = zoneGo.AddComponent<HelicopterHoverHeightZone>();
+        hoverZone.SetAdditionalClearance(Mathf.Max(0f, baseHoverAdditionalClearance));
+        hoverZone.SetMinimumWorldAltitude(effectiveMinAltitude);
+        hoverZone.SetFixedWorldAltitude(effectiveFixedAltitude);
+        hoverZone.ConfigureBoxShape(
+            new Vector3(0f, effectiveCenterY, 0f),
+            new Vector3(
+                Mathf.Max(8f, wallWidth + baseHoverExtraPadding * 2f),
+                effectiveZoneHeight,
+                Mathf.Max(8f, wallLength + baseHoverExtraPadding * 2f)),
+            false);
     }
 
     private void BuildHelipadVisual(Transform root)
@@ -604,42 +753,6 @@ public class MilitaryBaseGenerator : MonoBehaviour
         }
     }
 
-    private void ApplyHelipadGeometryTuning(Transform root)
-    {
-        if (root == null) return;
-
-        var deck = root.Find("PadDeck");
-        if (deck != null) deck.localScale = new Vector3(helipadRadius, Mathf.Max(0.05f, deck.localScale.y), helipadRadius);
-
-        var disc = root.Find("LandingDisc");
-        if (disc != null) disc.localScale = new Vector3(helipadRadius * 0.94f, Mathf.Max(0.04f, disc.localScale.y), helipadRadius * 0.94f);
-
-        var ring = root.Find("HelipadRing");
-        if (ring != null) ring.localScale = new Vector3(helipadRadius * 1.02f, Mathf.Max(0.04f, ring.localScale.y), helipadRadius * 1.02f);
-
-        var crossRoot = root.Find("HelipadCross");
-        if (crossRoot != null)
-        {
-            var vertical = crossRoot.Find("CrossVertical");
-            if (vertical != null) vertical.localScale = new Vector3(1.28f, Mathf.Max(0.04f, vertical.localScale.y), helipadRadius * 0.58f);
-
-            var horizontal = crossRoot.Find("CrossHorizontal");
-            if (horizontal != null) horizontal.localScale = new Vector3(helipadRadius * 0.58f, Mathf.Max(0.04f, horizontal.localScale.y), 1.28f);
-            crossRoot.localPosition = new Vector3(0f, ResolveHelipadSurfaceY(root) + 0.03f, 0f);
-        }
-
-        var markerIndex = 0;
-        foreach (Transform child in root)
-        {
-            if (!child.name.StartsWith("PadMarker_")) continue;
-            var angle = markerIndex * Mathf.PI * 2f / 10f;
-            var p = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * (helipadRadius * 0.5f);
-            child.localPosition = new Vector3(p.x, ResolveHelipadSurfaceY(root) + 0.012f, p.z);
-            child.localScale = new Vector3(0.26f, Mathf.Max(0.04f, child.localScale.y), 0.82f);
-            markerIndex++;
-        }
-    }
-
     private float ResolveHelipadSurfaceY(Transform root)
     {
         if (root == null) return 0.02f;
@@ -677,8 +790,20 @@ public class MilitaryBaseGenerator : MonoBehaviour
             var s = Random.Range(Mathf.Min(junkScaleRange.x, junkScaleRange.y), Mathf.Max(junkScaleRange.x, junkScaleRange.y));
             go.transform.localScale *= s;
             SnapObjectToGround(go.transform);
+            DisableCollidersForBaseTree(go.transform);
             junkPoints.Add(candidate);
             spawned++;
+        }
+    }
+
+    private static void DisableCollidersForBaseTree(Transform root)
+    {
+        if (root == null) return;
+        var colliders = root.GetComponentsInChildren<Collider>(true);
+        for (var i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] == null) continue;
+            colliders[i].enabled = false;
         }
     }
 
@@ -757,6 +882,32 @@ public class MilitaryBaseGenerator : MonoBehaviour
         return true;
     }
 
+    private void DisableCollidersOnExistingTrees(Vector3 center)
+    {
+        var safeRadius = Mathf.Max(helipadRadius * 1.5f, Mathf.Max(wallWidth, wallLength) * 0.55f);
+        GameObject[] taggedTrees;
+        try
+        {
+            taggedTrees = GameObject.FindGameObjectsWithTag("Tree");
+        }
+        catch
+        {
+            return;
+        }
+
+        if (taggedTrees == null || taggedTrees.Length == 0) return;
+        var safeRadiusSqr = safeRadius * safeRadius;
+        for (var i = 0; i < taggedTrees.Length; i++)
+        {
+            var tree = taggedTrees[i];
+            if (tree == null) continue;
+            var delta = tree.transform.position - center;
+            delta.y = 0f;
+            if (delta.sqrMagnitude > safeRadiusSqr) continue;
+            DisableCollidersForBaseTree(tree.transform);
+        }
+    }
+
     private static void ClearChildren(Transform root)
     {
         var toDelete = new List<GameObject>();
@@ -774,110 +925,4 @@ public class MilitaryBaseGenerator : MonoBehaviour
         }
     }
 
-#if UNITY_EDITOR
-    [ContextMenu("Create/Update Helipad Visual Prefab")]
-    private void CreateOrUpdateHelipadPrefab()
-    {
-        var temp = new GameObject("HelipadVisual_Template");
-        BuildHelipadVisual(temp.transform);
-        var folder = "Assets/Prefabs/Generated";
-        if (!AssetDatabase.IsValidFolder("Assets/Prefabs"))
-            AssetDatabase.CreateFolder("Assets", "Prefabs");
-        if (!AssetDatabase.IsValidFolder(folder))
-            AssetDatabase.CreateFolder("Assets/Prefabs", "Generated");
-
-        var path = $"{folder}/HelipadVisual.prefab";
-        helipadVisualPrefab = PrefabUtility.SaveAsPrefabAsset(temp, path);
-        DestroyImmediate(temp);
-        EditorUtility.SetDirty(this);
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
-    }
-
-    private void AutoAssignPrefabsFromPack()
-    {
-        if (wallPrefab == null)
-            wallPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Tiny Teacup Studio/Military Base Pack/Prefabs/Ground/Fence.prefab");
-        if (watchTowerPrefab == null)
-            watchTowerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Tiny Teacup Studio/Military Base Pack/Prefabs/Buildings/Tower1.prefab");
-        if (helipadVisualPrefab == null)
-            helipadVisualPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Generated/HelipadVisual.prefab");
-
-        if (mainBuildingPrefabs == null || mainBuildingPrefabs.Length == 0)
-            mainBuildingPrefabs = LoadPrefabsAt("Assets/Tiny Teacup Studio/Military Base Pack/Prefabs/Buildings");
-
-        var extraJunk = LoadPrefabsAtMultiple(new[]
-            {
-                "Assets/Objects/Trees/Prefabs"
-            }, 40);
-        junkPrefabs = MergeUniquePrefabs(junkPrefabs, extraJunk, 50);
-    }
-
-    private static GameObject[] LoadPrefabsAt(string folder)
-    {
-        if (!AssetDatabase.IsValidFolder(folder)) return new GameObject[0];
-        var guids = AssetDatabase.FindAssets("t:Prefab", new[] { folder });
-        var list = new List<GameObject>(guids.Length);
-        for (var i = 0; i < guids.Length; i++)
-        {
-            var path = AssetDatabase.GUIDToAssetPath(guids[i]);
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            if (prefab != null) list.Add(prefab);
-        }
-
-        return list.ToArray();
-    }
-
-    private static GameObject[] LoadPrefabsAtMultiple(string[] folders, int maxCount)
-    {
-        var list = new List<GameObject>();
-        for (var i = 0; i < folders.Length; i++)
-        {
-            var folder = folders[i];
-            if (!AssetDatabase.IsValidFolder(folder)) continue;
-            var guids = AssetDatabase.FindAssets("t:Prefab", new[] { folder });
-            for (var g = 0; g < guids.Length; g++)
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guids[g]);
-                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-                if (prefab == null) continue;
-
-                var lower = prefab.name.ToLowerInvariant();
-                if (!lower.Contains("tree") && !lower.Contains("bush")) continue;
-                if (lower.Contains("marine")) continue;
-
-                list.Add(prefab);
-                if (list.Count >= maxCount) return list.ToArray();
-            }
-        }
-
-        return list.ToArray();
-    }
-
-    private static GameObject[] MergeUniquePrefabs(GameObject[] existing, GameObject[] additions, int maxCount)
-    {
-        var merged = new List<GameObject>(maxCount);
-        if (existing != null)
-        {
-            for (var i = 0; i < existing.Length; i++)
-            {
-                var prefab = existing[i];
-                if (prefab == null || merged.Contains(prefab)) continue;
-                merged.Add(prefab);
-                if (merged.Count >= maxCount) return merged.ToArray();
-            }
-        }
-
-        if (additions == null) return merged.ToArray();
-        for (var i = 0; i < additions.Length; i++)
-        {
-            var prefab = additions[i];
-            if (prefab == null || merged.Contains(prefab)) continue;
-            merged.Add(prefab);
-            if (merged.Count >= maxCount) break;
-        }
-
-        return merged.ToArray();
-    }
-#endif
 }

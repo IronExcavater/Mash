@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6250683748964531018}
   - component: {fileID: 3619253211169975903}
+  - component: {fileID: 2253562001920912939}
   m_Layer: 0
   m_Name: Terrain Manager
   m_TagString: Untagged
@@ -44,10 +45,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 58ae7fb1c1734195bc35b919d3683763, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TerrainGenerator
-  generationMode: 1
+  generationMode: 0
+  useAsyncGenerationInPlayMode: 1
+  asyncHeightRowsPerFrame: 256
+  asyncEnvironmentSpawnsPerFrame: 128
+  runtimeAlphamapResolutionCap: 384
+  runtimeMaxBlendSmoothIterations: 0
   targetTerrain: {fileID: 0}
   biomeProfile: {fileID: 11400000, guid: 962f8a10c95e0ff4eadd958a16d21bf0, type: 2}
-  seed: -659266268
+  seed: 2146796824
   onGenerationStarted:
     m_PersistentCalls:
       m_Calls: []
@@ -57,5 +63,116 @@ MonoBehaviour:
   onGenerationFailed:
     m_PersistentCalls:
       m_Calls: []
-  generateTerrainNowButton: 0
-  generateNewSeedButton: 0
+--- !u!114 &2253562001920912939
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3267924490582770222}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d5cdc53472c7e345aff32599e1e2756, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MilitaryBaseGenerator
+  targetTerrain: {fileID: 0}
+  baseCenterNormalized: {x: 0.5, y: 0.5}
+  baseRadius: 76
+  blendDistance: 90
+  terrainFlattenStrength: 0.72
+  forceSinglePassCoreFlatten: 1
+  baseHeightOffset: 0
+  flattenTerrain: 1
+  clearExistingChildren: 1
+  disableCollidersOnExistingTreesInsideBase: 1
+  baseRoot: {fileID: 0}
+  wallPrefab: {fileID: 4634353900430721927, guid: abe3d47b915ca924a9e06dd6d3321396, type: 3}
+  watchTowerPrefab: {fileID: 5744797494681551465, guid: 14b815d30af8cd84c8c3757a8512037b, type: 3}
+  wallWidth: 108
+  wallLength: 102
+  wallYOffset: 0
+  towerYBoost: 0
+  watchTowerInset: 2.5
+  placeSideWatchTowers: 1
+  mainBuildingPrefabs:
+  - {fileID: 7751978910084728754, guid: c1be3b57fb99b8f4d800d2901350113e, type: 3}
+  - {fileID: 7835954134628060387, guid: 3db4795cede81cb4688ba6b988f6f248, type: 3}
+  - {fileID: 965706651898568997, guid: 4ec28902914d13545b2a2e107b4687ed, type: 3}
+  - {fileID: 1598671561847451649, guid: cc3cc80fb4c1ffd4cb6c9a603eebdaf6, type: 3}
+  - {fileID: 5744797494681551465, guid: 14b815d30af8cd84c8c3757a8512037b, type: 3}
+  mainBuildingScale: 0.85
+  buildingInnerInset: 20
+  buildingRoadOffset: 14
+  buildingRowSpacing: 22
+  buildingFacingYaw: 90
+  junkPrefabs:
+  - {fileID: 7328870639520891887, guid: 8486bb02095564b418151ad045a854e0, type: 3}
+  - {fileID: 7328870639520891887, guid: 45ec7cc73a66c0d41ae5c3245360e71d, type: 3}
+  - {fileID: 7328870639520891887, guid: 627facdd61ffa7744abeb35cc25c6c03, type: 3}
+  - {fileID: 7328870639520891887, guid: 64bbb59182b63224fa8fb0a3951a64ab, type: 3}
+  - {fileID: 6923396920241610861, guid: 8aee102a345aa7d45a037e036297ad27, type: 3}
+  - {fileID: 5116050351647496849, guid: 51faba9de6c4dec499159d098b08de3b, type: 3}
+  - {fileID: 6437394323481750929, guid: 690e4c2156e6a5442940823a29575782, type: 3}
+  - {fileID: 6923396920241610861, guid: 98fcad534a3f33341b209e50e498b901, type: 3}
+  - {fileID: 4639806620845042370, guid: cf719d43f3f5d954fbe0879e403e6c98, type: 3}
+  - {fileID: 1448430027850571775, guid: ddaaaa66e4cb4a44e99b6c554dbf3605, type: 3}
+  - {fileID: 8747741603709002201, guid: fe388000c0d08514cb8943d056ab0d0a, type: 3}
+  - {fileID: 2552343712665967847, guid: 0cb3eace37a2b6348801940d14f3a3f0, type: 3}
+  - {fileID: 4611302071504115156, guid: dc937ca1ca3107e49b6cf0f10c2e3354, type: 3}
+  - {fileID: 2321040479356192898, guid: 1b1d25c0a3e022548891494d7dfe6b9b, type: 3}
+  - {fileID: 2079044071360803336, guid: 3b8eff93096f18d4dafc362ed4ec9e64, type: 3}
+  - {fileID: 6238625266186210074, guid: 7e0726977c878af45a692703dd5f2cd4, type: 3}
+  - {fileID: 8979749443609873595, guid: 8bf947656f7b5fb4ca2a3f3125e08de6, type: 3}
+  - {fileID: 6627063721665511771, guid: 9e73fc75bb8bc6b4ab6d03f63a6984a6, type: 3}
+  - {fileID: 4591206162753240276, guid: f717d443369bdf6448c19bb99caf51ca, type: 3}
+  - {fileID: 224724492192777512, guid: 6776bb927886281418e3b55b9d4e9445, type: 3}
+  - {fileID: 2690124323242471328, guid: c0568743c952f6c4eb171e79dd87cded, type: 3}
+  - {fileID: 8929924018598389886, guid: 1d164fcea09917349bc2e690ebf358a5, type: 3}
+  - {fileID: 8029755101934678235, guid: de5c1c9b933b8534fbec1cf841c9a106, type: 3}
+  - {fileID: 3311435534825550973, guid: 81baf3ebafea6ff4e80decb115852f34, type: 3}
+  - {fileID: 7541102120062702921, guid: 62cb22412eb6dc34db48cab925b0cb61, type: 3}
+  - {fileID: 6018371075495249132, guid: 0e6f5009c0c39914f981ab9186ff4388, type: 3}
+  - {fileID: 3991326285968246163, guid: f38b5be86b462b74a92aad5eac3997da, type: 3}
+  - {fileID: 702928477410393272, guid: e0b2d0f0a3fe5a742b179138191ce07f, type: 3}
+  - {fileID: 3082479954583243504, guid: b93be9e74e65acf44906cc348cb0faf9, type: 3}
+  - {fileID: 9202164569112832452, guid: 81d05885a12646d4eb4cd84b5175fcfd, type: 3}
+  - {fileID: 5849133400102054150, guid: 7e097523512d5864896f7bd1e4707287, type: 3}
+  - {fileID: 7924689376277899509, guid: 1a9f96655307b084aa599e9592ac6b13, type: 3}
+  - {fileID: 296203872420987979, guid: 6f00aa44ad9a5cd4c88050c5e1ec8a40, type: 3}
+  - {fileID: 6991866401708876978, guid: 4038fc3af36d6c34caacc259e5544ba6, type: 3}
+  - {fileID: 4450219149373549842, guid: 8e7ac1c9d7c5b7041b0338f7ffe93ef7, type: 3}
+  - {fileID: 8711239122101581536, guid: 5c1cf99a2ecfd094888359e3b0d6dcab, type: 3}
+  - {fileID: 2816260254094594352, guid: 90403151535d04241a6ca9353bac6d45, type: 3}
+  - {fileID: 8088904026085493351, guid: 0a39cba24da6ad147a642633a684099b, type: 3}
+  - {fileID: 9180467208424673558, guid: 779af03aa4f30374dbb4f372a67daa59, type: 3}
+  - {fileID: 4598965164027614359, guid: 4365cb351409d6742a236477e7ee647c, type: 3}
+  - {fileID: 2237009367583896894, guid: 6f618aa76977d1f4a877b3846db8bea3, type: 3}
+  - {fileID: 1869661896055240458, guid: 261b09f501755dc44ac2bdbc8385e226, type: 3}
+  - {fileID: 690333249096177883, guid: 5e2cd432216507c41b54ff2827e1ae10, type: 3}
+  - {fileID: 2564540701258679727, guid: 4cc2cbd2c79c89f44bf68e40ca02a20d, type: 3}
+  - {fileID: 2402971491168718707, guid: a7ee8ac30c5154d448a061cfe2028118, type: 3}
+  - {fileID: 6507455620172643880, guid: 1629ba0c00e00614fb0e942ac0e4f7be, type: 3}
+  - {fileID: 7443721028988234622, guid: 8a16cf0c890d4314ba87b40d71755ef4, type: 3}
+  - {fileID: 8350279803031375465, guid: 23c0cc4c02e7b294682977e61aaaac5d, type: 3}
+  - {fileID: 8817930003109354374, guid: 72a9ac9babf0f154db41c554712b3677, type: 3}
+  - {fileID: 4355073825518352475, guid: a257b53eaddae7f41b7ce8b90c8a0716, type: 3}
+  junkCount: 22
+  junkInnerRadius: 22
+  junkOuterRadius: 50
+  junkMinSpacing: 3.2
+  junkScaleRange: {x: 0.9, y: 1.1}
+  helipadName: CentralHelipad
+  helipadVisualPrefab: {fileID: 0}
+  helipadElevation: 2.4
+  helipadRadius: 12.5
+  helipadZoneRadius: 16
+  helipadCrossColor: {r: 0.85, g: 0.08, b: 0.08, a: 1}
+  helipadConcreteColor: {r: 0.32, g: 0.33, b: 0.35, a: 1}
+  helipadDarkConcreteColor: {r: 0.2, g: 0.2, b: 0.22, a: 1}
+  helipadAccentColor: {r: 0.58, g: 0.58, b: 0.58, a: 1}
+  createBaseHoverZone: 1
+  baseHoverExtraPadding: 16
+  baseHoverZoneHeight: 60
+  baseHoverCenterYOffset: 30
+  baseHoverMinimumAltitudeAboveGround: 18
+  baseHoverAdditionalClearance: 4

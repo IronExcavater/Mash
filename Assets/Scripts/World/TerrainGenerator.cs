@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;
 #if UNITY_EDITOR
@@ -18,6 +19,11 @@ public class TerrainGenerator : MonoBehaviour
 
     [Header("Generation")]
     [SerializeField] private GenerationMode generationMode = GenerationMode.OnMissing;
+    [SerializeField] private bool useAsyncGenerationInPlayMode = true;
+    [SerializeField, Min(8)] private int asyncHeightRowsPerFrame = 192;
+    [SerializeField, Min(4)] private int asyncEnvironmentSpawnsPerFrame = 96;
+    [SerializeField, Min(128)] private int runtimeAlphamapResolutionCap = 384;
+    [SerializeField, Range(0, 3)] private int runtimeMaxBlendSmoothIterations = 0;
     [ConditionalField("generationMode", (int)GenerationMode.Manual)]
     [SerializeField] private Terrain targetTerrain;
     [SerializeField] private TerrainBiomeProfile biomeProfile;
@@ -31,14 +37,11 @@ public class TerrainGenerator : MonoBehaviour
     [SerializeField] private UnityEvent onGenerationStarted;
     [SerializeField] private UnityEvent onGenerationCompleted;
     [SerializeField] private UnityEvent<string> onGenerationFailed;
-    [Header("Actions")]
-    [InspectorButton(nameof(GenerateTerrain), "Generate Terrain")]
-    [SerializeField] private bool generateTerrainNowButton;
-    [InspectorButton(nameof(GenerateNewSeed), "Generate New Seed")]
-    [SerializeField] private bool generateNewSeedButton;
     public event System.Action GenerationStarted;
     public event System.Action GenerationCompleted;
     public event System.Action<string> GenerationFailed;
+    public bool IsGenerating { get; private set; }
+    private Coroutine generationRoutine;
 
 #if UNITY_EDITOR
     private bool pendingEditorSeedRefresh;
@@ -56,6 +59,23 @@ public class TerrainGenerator : MonoBehaviour
 
     [ContextMenu("Generate Terrain")]
     public void GenerateTerrain()
+    {
+        if (Application.isPlaying && useAsyncGenerationInPlayMode)
+        {
+            if (generationRoutine != null)
+            {
+                StopCoroutine(generationRoutine);
+                generationRoutine = null;
+                IsGenerating = false;
+            }
+            generationRoutine = StartCoroutine(GenerateTerrainAsyncRoutine());
+            return;
+        }
+
+        GenerateTerrainImmediate();
+    }
+
+    private void GenerateTerrainImmediate()
     {
         if (biomeProfile == null)
         {
@@ -91,6 +111,52 @@ public class TerrainGenerator : MonoBehaviour
         if (ShouldGenerateEnvironment())
             GenerateEnvironment(terrain);
         RaiseCompleted();
+    }
+
+    private IEnumerator GenerateTerrainAsyncRoutine()
+    {
+        if (biomeProfile == null)
+        {
+            RaiseFailed("No TerrainBiomeProfile assigned.");
+            generationRoutine = null;
+            yield break;
+        }
+
+        RaiseStarted();
+        activeGenerationSeed = seed;
+        lastGeneratedSeed = activeGenerationSeed;
+        var terrain = ResolveTerrainForGeneration(createIfMissing: true);
+        if (terrain == null)
+        {
+            RaiseFailed("No terrain available to generate.");
+            generationRoutine = null;
+            yield break;
+        }
+
+        var data = EnsureTerrainData(terrain);
+        var resolution = Mathf.ClosestPowerOfTwo(Mathf.Clamp(biomeProfile.heightmapResolution - 1, 32, 4096)) + 1;
+        data.heightmapResolution = resolution;
+        data.size = new Vector3(biomeProfile.terrainWidth, biomeProfile.terrainHeight, biomeProfile.terrainLength);
+
+        var heights = new float[resolution, resolution];
+        yield return StartCoroutine(BuildHeightMapAsync(resolution, heights));
+        data.SetHeights(0, 0, heights);
+
+        var layers = ResolveTerrainLayers();
+        data.terrainLayers = layers;
+        PaintLayerBlending(data);
+
+        SyncTerrainColliderData(terrain);
+        ApplyTerrainTransform(terrain);
+        ApplyTerrainDrawDistances(terrain);
+        ApplyTerrainMaterialTemplate(terrain);
+        terrain.Flush();
+
+        if (ShouldGenerateEnvironment())
+            yield return StartCoroutine(GenerateEnvironmentAsync(terrain));
+
+        RaiseCompleted();
+        generationRoutine = null;
     }
 
     private void Start()
@@ -252,6 +318,123 @@ public class TerrainGenerator : MonoBehaviour
         ApplyCentralBaseFlattening(heights, resolution);
 
         return heights;
+    }
+
+    private IEnumerator BuildHeightMapAsync(int resolution, float[,] heights)
+    {
+        var rng = new System.Random(activeGenerationSeed);
+        var sx = (float)rng.NextDouble() * 1000f;
+        var sy = (float)rng.NextDouble() * 1000f;
+        var mx = (float)rng.NextDouble() * 1000f;
+        var my = (float)rng.NextDouble() * 1000f;
+        var radians = biomeProfile.duneDirectionDegrees * Mathf.Deg2Rad;
+        var duneDir = new Vector2(Mathf.Cos(radians), Mathf.Sin(radians)).normalized;
+
+        var relief = Mathf.Clamp01(biomeProfile.terrainRelief);
+        var duneHeight = Mathf.Clamp01(biomeProfile.duneHeight);
+        var duneVariation = Mathf.Clamp01(biomeProfile.duneVariation);
+        var edgeFlattening = Mathf.Clamp01(biomeProfile.edgeFlattening);
+        var mountainHeight = Mathf.Clamp01(biomeProfile.mountainHeight);
+        var mountainWidth = Mathf.Clamp(biomeProfile.mountainWidthFromEdge01, 0.05f, 0.5f);
+        var mountainVariation = Mathf.Clamp01(biomeProfile.mountainVariation);
+        var duneAmplitude = Mathf.Lerp(0.06f, 0.24f, duneHeight) * Mathf.Lerp(0.7f, 1f, relief);
+        var mountainBase = Mathf.Lerp(0.1f, 0.32f, mountainHeight);
+        var mountainDetailAmplitude = Mathf.Lerp(0.08f, 0.34f, mountainHeight);
+        var mountainNoiseFrequency = Mathf.Lerp(0.0009f, 0.0034f, mountainVariation);
+        var mountainRidgeSharpness = Mathf.Lerp(2.7f, 1.35f, mountainVariation);
+
+        var minHeight = float.MaxValue;
+        var maxHeight = float.MinValue;
+        var rowsPerFrame = Mathf.Max(8, asyncHeightRowsPerFrame);
+        var rowCounter = 0;
+
+        for (var y = 0; y < resolution; y++)
+        {
+            for (var x = 0; x < resolution; x++)
+            {
+                var nx = (float)x / (resolution - 1);
+                var ny = (float)y / (resolution - 1);
+                var worldX = nx * biomeProfile.terrainWidth;
+                var worldY = ny * biomeProfile.terrainLength;
+
+                var dunes = ComputeDunes(worldX, worldY, duneDir, biomeProfile.duneFrequency, duneVariation, sx, sy);
+                dunes *= duneAmplitude;
+                dunes *= 1f - ComputeEdgeMask(nx, ny) * edgeFlattening;
+
+                var edgeDistance = Mathf.Min(Mathf.Min(nx, 1f - nx), Mathf.Min(ny, 1f - ny));
+                var mountainBandBase = 1f - Mathf.SmoothStep(mountainWidth * 0.2f, mountainWidth, edgeDistance);
+                var mountainBand = Mathf.Pow(Mathf.Clamp01(mountainBandBase), 0.75f);
+                var n1 = Mathf.PerlinNoise(mx + worldX * mountainNoiseFrequency, my + worldY * mountainNoiseFrequency);
+                var n2 = Mathf.PerlinNoise(mx * 0.63f + worldX * mountainNoiseFrequency * 2.8f, my * 0.63f + worldY * mountainNoiseFrequency * 2.8f);
+                var mountainNoise = Mathf.Lerp(n1, n2, 0.45f);
+                var ridge = Mathf.Pow(Mathf.Abs(mountainNoise * 2f - 1f), mountainRidgeSharpness);
+                var borderUplift = Mathf.Pow(1f - Mathf.SmoothStep(0f, mountainWidth * 0.6f, edgeDistance), 1.2f) * mountainHeight * 0.22f;
+                var mountains = mountainBand * (mountainBase + mountainDetailAmplitude * ridge) + borderUplift;
+
+                var h = dunes + mountains;
+                heights[y, x] = h;
+                if (h < minHeight) minHeight = h;
+                if (h > maxHeight) maxHeight = h;
+            }
+
+            rowCounter++;
+            if (rowCounter >= rowsPerFrame)
+            {
+                rowCounter = 0;
+                yield return null;
+            }
+        }
+
+        if (biomeProfile.lowestPointAtWorldYZero)
+        {
+            var normalizeRowCounter = 0;
+            for (var y = 0; y < resolution; y++)
+            {
+                for (var x = 0; x < resolution; x++)
+                    heights[y, x] = Mathf.Max(0f, heights[y, x] - minHeight);
+                normalizeRowCounter++;
+                if (normalizeRowCounter >= rowsPerFrame)
+                {
+                    normalizeRowCounter = 0;
+                    yield return null;
+                }
+            }
+            maxHeight -= minHeight;
+        }
+
+        if (maxHeight > 1f)
+        {
+            var inv = 1f / maxHeight;
+            var scaleRowCounter = 0;
+            for (var y = 0; y < resolution; y++)
+            {
+                for (var x = 0; x < resolution; x++)
+                    heights[y, x] = Mathf.Clamp01(heights[y, x] * inv);
+                scaleRowCounter++;
+                if (scaleRowCounter >= rowsPerFrame)
+                {
+                    scaleRowCounter = 0;
+                    yield return null;
+                }
+            }
+        }
+        else
+        {
+            var clampRowCounter = 0;
+            for (var y = 0; y < resolution; y++)
+            {
+                for (var x = 0; x < resolution; x++)
+                    heights[y, x] = Mathf.Clamp01(heights[y, x]);
+                clampRowCounter++;
+                if (clampRowCounter >= rowsPerFrame)
+                {
+                    clampRowCounter = 0;
+                    yield return null;
+                }
+            }
+        }
+
+        ApplyCentralBaseFlattening(heights, resolution);
     }
 
     private static float ComputeDunes(
@@ -511,8 +694,12 @@ public class TerrainGenerator : MonoBehaviour
         var warpScale = Mathf.Max(0.00001f, biomeProfile.blendWarpScale);
         var bandStrength = Mathf.Clamp01(biomeProfile.blendBandStrength);
         var smoothIterations = Mathf.Clamp(biomeProfile.blendSmoothIterations, 0, 3);
+        if (Application.isPlaying)
+            smoothIterations = Mathf.Min(smoothIterations, Mathf.Clamp(runtimeMaxBlendSmoothIterations, 0, 3));
 
         var alphaRes = Mathf.Clamp(Mathf.NextPowerOfTwo(Mathf.Max(128, biomeProfile.alphamapResolution)), 128, 2048);
+        if (Application.isPlaying)
+            alphaRes = Mathf.Min(alphaRes, Mathf.Clamp(runtimeAlphamapResolutionCap, 128, 2048));
         if (data.alphamapResolution != alphaRes) data.alphamapResolution = alphaRes;
 
         var layerCount = data.terrainLayers.Length;
@@ -707,6 +894,33 @@ public class TerrainGenerator : MonoBehaviour
         if (activeGenerateObjects) ScatterPrefabs(terrain, root, activeObjectPrefabs, activeObjectCount, "Objects");
     }
 
+    private IEnumerator GenerateEnvironmentAsync(Terrain terrain)
+    {
+        if (biomeProfile == null) yield break;
+        var root = FindOrCreateGeneratedRoot();
+        ClearChildren(root);
+        yield return null;
+
+        var activeGenerateRoad = biomeProfile.generateRoad;
+        var activeGenerateTrees = biomeProfile.generateTrees;
+        var activeGenerateObjects = biomeProfile.generateObjects;
+        var activeRoadWidth = biomeProfile.roadWidth;
+        var activeTreePrefabs = biomeProfile.treePrefabs;
+        var activeTreeCount = Mathf.RoundToInt(biomeProfile.treeCount * 1.15f);
+        var activeObjectPrefabs = biomeProfile.objectPrefabs;
+        var activeObjectCount = biomeProfile.objectCount;
+
+        if (activeGenerateRoad)
+        {
+            SpawnRoad(terrain, root, activeRoadWidth);
+            yield return null;
+        }
+        if (activeGenerateTrees)
+            yield return StartCoroutine(ScatterPrefabsAsync(terrain, root, activeTreePrefabs, activeTreeCount, "Trees"));
+        if (activeGenerateObjects)
+            yield return StartCoroutine(ScatterPrefabsAsync(terrain, root, activeObjectPrefabs, activeObjectCount, "Objects"));
+    }
+
     private Transform FindOrCreateGeneratedRoot()
     {
         var existing = transform.Find("GeneratedEnvironment");
@@ -782,7 +996,120 @@ public class TerrainGenerator : MonoBehaviour
                 ? Mathf.Lerp(1.0f, 1.5f, (float)rng.NextDouble())
                 : Mathf.Lerp(0.85f, 1.2f, (float)rng.NextDouble());
             go.transform.localScale *= s;
+            if (isTreeContainer)
+                EnsureTreeHazardCollider(go);
             spawned++;
+        }
+    }
+
+    private IEnumerator ScatterPrefabsAsync(Terrain terrain, Transform root, GameObject[] prefabs, int count, string containerName)
+    {
+        if (prefabs == null || prefabs.Length == 0 || count <= 0) yield break;
+        var container = new GameObject(containerName).transform;
+        container.SetParent(root, false);
+        var rng = new System.Random(activeGenerationSeed + containerName.GetHashCode());
+        var maxAttempts = Mathf.Max(1, count * 12);
+        var spawned = 0;
+        var attempts = 0;
+        var spawnBatch = Mathf.Max(4, asyncEnvironmentSpawnsPerFrame);
+        var spawnedSinceYield = 0;
+        var attemptsSinceYield = 0;
+
+        var isTreeContainer = string.Equals(containerName, "Trees", StringComparison.Ordinal);
+        while (spawned < count && attempts < maxAttempts)
+        {
+            attempts++;
+            attemptsSinceYield++;
+            var px = 0f;
+            var pz = 0f;
+            if (isTreeContainer && (float)rng.NextDouble() < Mathf.Clamp01(biomeProfile.treeCenterDensity))
+            {
+                var centerX = Mathf.Clamp01(biomeProfile.baseCenterNormalized.x) * biomeProfile.terrainWidth;
+                var centerZ = Mathf.Clamp01(biomeProfile.baseCenterNormalized.y) * biomeProfile.terrainLength;
+                var maxRadius = Mathf.Min(biomeProfile.terrainWidth, biomeProfile.terrainLength) * 0.48f;
+                var angle = (float)rng.NextDouble() * Mathf.PI * 2f;
+                var radius01 = Mathf.Pow((float)rng.NextDouble(), Mathf.Max(1f, biomeProfile.treeCenterBiasExponent));
+                var radius = maxRadius * radius01;
+                px = centerX + Mathf.Cos(angle) * radius;
+                pz = centerZ + Mathf.Sin(angle) * radius;
+                px = Mathf.Clamp(px, 0.5f, biomeProfile.terrainWidth - 0.5f);
+                pz = Mathf.Clamp(pz, 0.5f, biomeProfile.terrainLength - 0.5f);
+            }
+            else
+            {
+                px = (float)rng.NextDouble() * biomeProfile.terrainWidth;
+                pz = (float)rng.NextDouble() * biomeProfile.terrainLength;
+            }
+
+            var world = terrain.transform.position + new Vector3(px, 0f, pz);
+            if (IsInsideBaseExclusionZone(world, isTreeContainer)) continue;
+            world.y = terrain.SampleHeight(world) + terrain.transform.position.y;
+            var prefab = prefabs[rng.Next(0, prefabs.Length)];
+            if (prefab == null) continue;
+            var go = Instantiate(prefab, world, Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f), container);
+            var s = isTreeContainer
+                ? Mathf.Lerp(1.0f, 1.5f, (float)rng.NextDouble())
+                : Mathf.Lerp(0.85f, 1.2f, (float)rng.NextDouble());
+            go.transform.localScale *= s;
+            if (isTreeContainer)
+                EnsureTreeHazardCollider(go);
+            spawned++;
+            spawnedSinceYield++;
+            if (spawnedSinceYield >= spawnBatch || attemptsSinceYield >= spawnBatch * 3)
+            {
+                spawnedSinceYield = 0;
+                attemptsSinceYield = 0;
+                yield return null;
+            }
+        }
+    }
+
+    private static void EnsureTreeHazardCollider(GameObject treeRoot)
+    {
+        if (treeRoot == null) return;
+
+        var colliders = treeRoot.GetComponentsInChildren<Collider>(true);
+        if (colliders != null && colliders.Length > 0)
+        {
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                if (colliders[i] == null) continue;
+                colliders[i].enabled = true;
+                colliders[i].isTrigger = false;
+            }
+        }
+        else
+        {
+            var renderer = treeRoot.GetComponentInChildren<Renderer>();
+            var capsule = treeRoot.GetComponent<CapsuleCollider>();
+            if (capsule == null) capsule = treeRoot.AddComponent<CapsuleCollider>();
+            capsule.isTrigger = false;
+            capsule.direction = 1;
+
+            if (renderer != null)
+            {
+                var b = renderer.bounds;
+                var h = Mathf.Max(1f, b.size.y);
+                capsule.height = h;
+                capsule.radius = Mathf.Max(0.35f, Mathf.Min(b.extents.x, b.extents.z));
+                var localCenter = treeRoot.transform.InverseTransformPoint(b.center);
+                capsule.center = localCenter;
+            }
+            else
+            {
+                capsule.height = 3.5f;
+                capsule.radius = 0.8f;
+                capsule.center = new Vector3(0f, 1.7f, 0f);
+            }
+        }
+
+        try
+        {
+            treeRoot.tag = "Tree";
+        }
+        catch
+        {
+            // Ignore if the tag does not exist in this project.
         }
     }
 
@@ -823,20 +1150,57 @@ public class TerrainGenerator : MonoBehaviour
 
     private void RaiseStarted()
     {
-        GenerationStarted?.Invoke();
+        IsGenerating = true;
+        InvokeSafe(GenerationStarted, "GenerationStarted");
         onGenerationStarted?.Invoke();
     }
 
     private void RaiseCompleted()
     {
-        GenerationCompleted?.Invoke();
+        IsGenerating = false;
+        InvokeSafe(GenerationCompleted, "GenerationCompleted");
         onGenerationCompleted?.Invoke();
     }
 
     private void RaiseFailed(string reason)
     {
-        GenerationFailed?.Invoke(reason);
+        IsGenerating = false;
+        InvokeSafe(GenerationFailed, reason, "GenerationFailed");
         onGenerationFailed?.Invoke(reason);
+    }
+
+    private void InvokeSafe(System.Action action, string eventName)
+    {
+        if (action == null) return;
+        var delegates = action.GetInvocationList();
+        for (var i = 0; i < delegates.Length; i++)
+        {
+            try
+            {
+                ((System.Action)delegates[i])();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(new Exception($"TerrainGenerator {eventName} listener failed.", ex), this);
+            }
+        }
+    }
+
+    private void InvokeSafe(System.Action<string> action, string arg, string eventName)
+    {
+        if (action == null) return;
+        var delegates = action.GetInvocationList();
+        for (var i = 0; i < delegates.Length; i++)
+        {
+            try
+            {
+                ((System.Action<string>)delegates[i])(arg);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(new Exception($"TerrainGenerator {eventName} listener failed.", ex), this);
+            }
+        }
     }
 
     private bool ShouldGenerateEnvironment()
@@ -874,47 +1238,3 @@ public class TerrainGenerator : MonoBehaviour
         return lastGeneratedSeed != seed;
     }
 }
-
-[AttributeUsage(AttributeTargets.Field)]
-public sealed class InspectorButtonAttribute : PropertyAttribute
-{
-    public readonly string MethodName;
-    public readonly string Label;
-
-    public InspectorButtonAttribute(string methodName, string label = null)
-    {
-        MethodName = methodName;
-        Label = label;
-    }
-}
-
-#if UNITY_EDITOR
-[CustomPropertyDrawer(typeof(InspectorButtonAttribute))]
-public sealed class InspectorButtonDrawer : PropertyDrawer
-{
-    public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
-    {
-        return EditorGUIUtility.singleLineHeight;
-    }
-
-    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
-    {
-        var data = (InspectorButtonAttribute)attribute;
-        var buttonLabel = string.IsNullOrWhiteSpace(data.Label) ? ObjectNames.NicifyVariableName(property.name) : data.Label;
-
-        if (!GUI.Button(position, buttonLabel)) return;
-        var target = property.serializedObject.targetObject;
-        if (target == null) return;
-
-        var method = target.GetType().GetMethod(data.MethodName, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-        if (method == null)
-        {
-            Debug.LogError($"InspectorButton: Method '{data.MethodName}' not found on {target.GetType().Name}.", target);
-            return;
-        }
-
-        method.Invoke(target, null);
-        EditorUtility.SetDirty(target);
-    }
-}
-#endif

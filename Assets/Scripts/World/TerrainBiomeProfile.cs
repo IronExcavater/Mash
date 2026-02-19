@@ -8,7 +8,7 @@ public class TerrainBiomeProfile : ScriptableObject
     [Min(64f)] public float terrainWidth = 3000f;
     [Min(64f)] public float terrainLength = 3000f;
     [Min(16f)] public float terrainHeight = 200f;
-    [Range(129, 4097)] public int heightmapResolution = 1025;
+    [Range(129, 4097)] public int heightmapResolution = 513;
     public bool centerAtWorldOrigin = true;
     public bool lowestPointAtWorldYZero = true;
 
@@ -61,7 +61,7 @@ public class TerrainBiomeProfile : ScriptableObject
     public Color fallbackDetailColor = new Color(0.34f, 0.32f, 0.29f, 1f);
 
     [Header("Texture Blending")]
-    [Range(16, 2048)] public int alphamapResolution = 1024;
+    [Range(16, 2048)] public int alphamapResolution = 512;
     [MinMaxInt(0f, 1f)] public MinMaxFloat slopeBlend = new MinMaxFloat(0.08f, 0.5f);
     [MinMaxInt(0f, 1f)] public MinMaxFloat heightBlend = new MinMaxFloat(0.18f, 0.55f);
     [Min(0.00001f)] public float blendNoiseScale = 0.0014f;
@@ -81,8 +81,8 @@ public class TerrainBiomeProfile : ScriptableObject
     [Range(1f, 4f)] public float treeCenterBiasExponent = 1.35f;
     [Range(0f, 1f)] public float treeBaseExclusionPaddingMultiplier = 0.05f;
     [Min(1f)] public float roadWidth = 12f;
-    [Min(0)] public int treeCount = 220;
-    [Min(0)] public int objectCount = 120;
+    [Min(0)] public int treeCount = 360;
+    [Min(0)] public int objectCount = 420;
     public GameObject[] treePrefabs;
     public GameObject[] objectPrefabs;
 }

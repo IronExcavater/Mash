@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 729c71ddb57b4f1469b030cd22794f50, type: 3}
-  m_Name: DesertBiomeProfile
+  m_Name: ForestBiomeProfile
   m_EditorClassIdentifier: Assembly-CSharp::TerrainBiomeProfile
   terrainWidth: 3000
   terrainLength: 3000
   terrainHeight: 200
-  heightmapResolution: 1025
+  heightmapResolution: 513
   centerAtWorldOrigin: 1
   lowestPointAtWorldYZero: 1
   terrainRelief: 0.5
@@ -47,7 +47,7 @@ MonoBehaviour:
   fallbackSteepColor: {r: 0.45, g: 0.41, b: 0.34, a: 1}
   fallbackAccentColor: {r: 0.53, g: 0.49, b: 0.38, a: 1}
   fallbackDetailColor: {r: 0.34, g: 0.32, b: 0.29, a: 1}
-  alphamapResolution: 1024
+  alphamapResolution: 512
   slopeBlend:
     min: 0.01
     max: 0.12
@@ -56,6 +56,12 @@ MonoBehaviour:
     max: 0.42
   blendNoiseScale: 0.0012
   blendNoiseStrength: 0.32
+  blendMacroNoiseScale: 0.00036
+  blendMacroNoiseStrength: 0.58
+  blendWarpDistance: 95
+  blendWarpScale: 0.0009
+  blendBandStrength: 0.32
+  blendSmoothIterations: 1
   generateRoad: 0
   generateTrees: 1
   generateObjects: 1
@@ -63,8 +69,8 @@ MonoBehaviour:
   treeCenterBiasExponent: 1.6
   treeBaseExclusionPaddingMultiplier: 0
   roadWidth: 12
-  treeCount: 700
-  objectCount: 1000
+  treeCount: 500
+  objectCount: 420
   treePrefabs:
   - {fileID: 6018371075495249132, guid: 0e6f5009c0c39914f981ab9186ff4388, type: 3}
   - {fileID: 3991326285968246163, guid: f38b5be86b462b74a92aad5eac3997da, type: 3}
