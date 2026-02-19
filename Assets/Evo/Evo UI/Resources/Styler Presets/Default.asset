@@ -59,8 +59,10 @@ MonoBehaviour:
     fontAsset: {fileID: 11400000, guid: 961c0212f9d0c3d4da8c1a034e9a13bf, type: 2}
   - itemID: Inter - Black
     fontAsset: {fileID: 11400000, guid: 4be21f40c8e9ed149abd8691e94e799d, type: 2}
+  - itemID: Military March
+    fontAsset: {fileID: 11400000, guid: 61f8e9bb26c10cf4181c2614266e1b52, type: 2}
   updateMode: 0
   audioFoldout: 0
   colorFoldout: 0
-  fontFoldout: 0
+  fontFoldout: 1
   settingsFoldout: 0
