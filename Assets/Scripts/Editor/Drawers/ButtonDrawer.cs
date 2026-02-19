@@ -1,69 +1,75 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
-[CustomPropertyDrawer(typeof(ButtonAttribute))]
-public class ButtonDrawer : PropertyDrawer
+[CanEditMultipleObjects]
+[CustomEditor(typeof(MonoBehaviour), true, isFallback = true)]
+public class ButtonDrawer : Editor
 {
-    public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+    private static readonly Dictionary<Type, List<(MethodInfo method, ButtonAttribute attribute)>> MethodCache = new();
+
+    public override void OnInspectorGUI()
     {
-        return EditorGUIUtility.singleLineHeight;
+        DrawDefaultInspector();
+        DrawButtonsForTargetType(target != null ? target.GetType() : null);
     }
 
-    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+    private void DrawButtonsForTargetType(Type inspectedType)
     {
-        var buttonAttribute = attribute as ButtonAttribute;
-        if (buttonAttribute == null)
+        if (inspectedType == null) return;
+        var methods = GetButtonMethods(inspectedType);
+        if (methods.Count == 0) return;
+
+        EditorGUILayout.Space(8f);
+        for (var i = 0; i < methods.Count; i++)
         {
-            EditorGUI.PropertyField(position, property, label, true);
-            return;
-        }
+            var entry = methods[i];
+            var button = entry.attribute;
 
-        var buttonLabel = string.IsNullOrWhiteSpace(buttonAttribute.label)
-            ? ObjectNames.NicifyVariableName(buttonAttribute.methodName)
-            : buttonAttribute.label;
+            if (button.PlayModeOnly && !Application.isPlaying) continue;
+            if (button.EditModeOnly && Application.isPlaying) continue;
 
-        if (!GUI.Button(position, buttonLabel)) return;
+            var label = string.IsNullOrWhiteSpace(button.Label)
+                ? ObjectNames.NicifyVariableName(entry.method.Name)
+                : button.Label;
+            var height = Mathf.Max(18f, button.Height);
+            if (!GUILayout.Button(label, GUILayout.Height(height))) continue;
 
-        var targets = property.serializedObject.targetObjects;
-        for (var i = 0; i < targets.Length; i++)
-        {
-            var target = targets[i];
-            if (target == null) continue;
-
-            InvokeMethod(target, buttonAttribute.methodName);
-            EditorUtility.SetDirty(target);
-        }
-
-        if (property.propertyType == SerializedPropertyType.Boolean)
-        {
-            property.boolValue = false;
-            property.serializedObject.ApplyModifiedPropertiesWithoutUndo();
+            for (var t = 0; t < targets.Length; t++)
+            {
+                var obj = targets[t];
+                if (obj == null) continue;
+                Undo.RecordObject(obj, $"Invoke {entry.method.Name}");
+                entry.method.Invoke(obj, null);
+                EditorUtility.SetDirty(obj);
+            }
         }
     }
 
-    private static void InvokeMethod(UnityEngine.Object target, string methodName)
+    private static List<(MethodInfo method, ButtonAttribute attribute)> GetButtonMethods(Type type)
     {
-        if (target == null || string.IsNullOrWhiteSpace(methodName)) return;
+        if (MethodCache.TryGetValue(type, out var cached)) return cached;
 
-        var type = target.GetType();
-        var method = type.GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
-        if (method == null)
+        var list = new List<(MethodInfo method, ButtonAttribute attribute)>();
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var methods = type.GetMethods(flags);
+        for (var i = 0; i < methods.Length; i++)
         {
-            Debug.LogWarning($"Button: method '{methodName}' not found on {type.Name}.", target);
-            return;
+            var method = methods[i];
+            if (method == null) continue;
+            if (method.GetParameters().Length != 0) continue;
+            if (method.ReturnType != typeof(void)) continue;
+            var attr = method.GetCustomAttribute<ButtonAttribute>(true);
+            if (attr == null) continue;
+            list.Add((method, attr));
         }
 
-        try
-        {
-            method.Invoke(target, null);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogException(ex, target);
-        }
+        MethodCache[type] = list;
+        return list;
     }
 }
 #endif
+

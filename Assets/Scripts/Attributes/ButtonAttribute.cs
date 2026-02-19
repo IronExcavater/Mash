@@ -1,13 +1,23 @@
-using UnityEngine;
+using System;
 
-public class ButtonAttribute : PropertyAttribute
+[AttributeUsage(AttributeTargets.Method, Inherited = true, AllowMultiple = false)]
+public sealed class ButtonAttribute : Attribute
 {
-    public readonly string methodName;
-    public readonly string label;
+    public string Label { get; }
+    public float Height { get; }
+    public bool PlayModeOnly { get; }
+    public bool EditModeOnly { get; }
 
-    public ButtonAttribute(string methodName, string label = null)
+    public ButtonAttribute(
+        string label = null,
+        float height = 24f,
+        bool playModeOnly = false,
+        bool editModeOnly = false)
     {
-        this.methodName = methodName;
-        this.label = label;
+        Label = label;
+        Height = height;
+        PlayModeOnly = playModeOnly;
+        EditModeOnly = editModeOnly;
     }
 }
+
