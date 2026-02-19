@@ -2,10 +2,14 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
+using System;
+using System.Collections;
 
 [AddComponentMenu("Gameplay/Game Flow Controller")]
 public class GameFlowController : MonoBehaviour
 {
+    private static bool forceStartPlayingOnNextLoad;
+
     public enum SessionState
     {
         MainMenu = 0,
@@ -34,26 +38,32 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private HelicopterCapacity helicopterCapacity;
 
     [Header("Input")]
+    [SerializeField] private bool useActionReferences = true;
+    [ConditionalField("useActionReferences", true)]
+    [SerializeField] private InputActionReference startActionReference;
+    [ConditionalField("useActionReferences", true)]
+    [SerializeField] private InputActionReference pauseActionReference;
+    [ConditionalField("useActionReferences", true)]
+    [SerializeField] private InputActionReference resetActionReference;
+    [ConditionalField("useActionReferences", false)]
     [SerializeField] private bool autoAssignInputAsset = true;
-    [ConditionalField("autoAssignInputAsset", false)]
+    [ConditionalField("useActionReferences", false)]
     [SerializeField] private InputActionAsset inputActions;
+    [ConditionalField("useActionReferences", false)]
     [SerializeField] private string startActionPath = "Player/Attack";
+    [ConditionalField("useActionReferences", false)]
     [SerializeField] private string pauseActionPath = "Player/Pause";
+    [ConditionalField("useActionReferences", false)]
     [SerializeField] private string resetActionPath = "Player/Reset";
     [SerializeField] private bool autoEnableActions = true;
 
     [Header("Rules")]
     [SerializeField] private bool startInMainMenu = true;
     [SerializeField] private bool autoSpawnSoldiersOnPlay = true;
-    [SerializeField, Min(1)] private int requiredSoldierCount = 6;
-    [SerializeField, Min(10f)] private float extractionDistanceFromHelipad = 70f;
-
-    [Header("Helicopter Ground Hold")]
-    [SerializeField] private bool enforceLowGroundHold = true;
-    [SerializeField, Min(0.5f)] private float lowGroundClearance = 4.5f;
-    [SerializeField, Min(0.1f)] private float lowGroundHoldResponse = 3.4f;
-    [SerializeField, Min(0.1f)] private float lowGroundHoldDamping = 1.8f;
-    [SerializeField, Min(0.1f)] private float lowGroundMaxCorrectionSpeed = 10f;
+    [SerializeField, Min(1)] private int requiredSoldierCount = 10;
+    [SerializeField, Min(0f)] private float missionCompleteDelaySeconds = 1f;
+    [SerializeField, Min(0f)] private float pauseFadeDuration = 0.22f;
+    [SerializeField, Min(0f)] private float resumeFadeDuration = 0.14f;
 
     [Header("Events")]
     [SerializeField] private UnityEvent<SessionState> onSessionStateChanged;
@@ -61,13 +71,18 @@ public class GameFlowController : MonoBehaviour
 
     public SessionState State { get; private set; } = SessionState.MainMenu;
     public MissionPhase Phase { get; private set; } = MissionPhase.WaitingForBoarding;
+    public int RequiredSoldierCount => Mathf.Max(1, requiredSoldierCount);
+    public event Action<SessionState, SessionState> SessionStateChanged;
+    public event Action<MissionPhase, MissionPhase> MissionPhaseChanged;
 
     private float baseFixedDeltaTime;
     private bool soldiersSpawned;
-    private Vector3 helipadCenter;
     private InputAction startAction;
     private InputAction pauseAction;
     private InputAction resetAction;
+    private Coroutine timeScaleRoutine;
+    private Coroutine missionCompleteRoutine;
+    private bool missionCompletePending;
 
     private void Awake()
     {
@@ -79,11 +94,11 @@ public class GameFlowController : MonoBehaviour
     {
         ResolveInputActions();
         if (autoEnableActions) SetActionsEnabled(true);
-        ApplyHelicopterGroundHoldIfNeeded();
 
-        if (helipadZone != null) helipadCenter = helipadZone.transform.position;
         SetPhase(MissionPhase.WaitingForBoarding);
-        SetSessionState(startInMainMenu ? SessionState.MainMenu : SessionState.Playing);
+        var forceStartPlaying = forceStartPlayingOnNextLoad;
+        forceStartPlayingOnNextLoad = false;
+        SetSessionState(forceStartPlaying || !startInMainMenu ? SessionState.Playing : SessionState.MainMenu);
     }
 
     private void OnEnable()
@@ -95,6 +110,12 @@ public class GameFlowController : MonoBehaviour
     private void OnDisable()
     {
         if (autoEnableActions) SetActionsEnabled(false);
+        if (missionCompleteRoutine != null)
+        {
+            StopCoroutine(missionCompleteRoutine);
+            missionCompleteRoutine = null;
+        }
+        missionCompletePending = false;
     }
 
     private void Update()
@@ -116,7 +137,13 @@ public class GameFlowController : MonoBehaviour
 
     public void ResetGame()
     {
-        SetSimulationScale(1f);
+        ResetGame(false);
+    }
+
+    public void ResetGame(bool startImmediately)
+    {
+        forceStartPlayingOnNextLoad = startImmediately;
+        SetSimulationScale(1f, true);
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
@@ -140,43 +167,55 @@ public class GameFlowController : MonoBehaviour
 
     private void UpdateMissionProgress()
     {
-        if (helicopterCapacity == null || helipadZone == null) return;
+        if (helicopterCapacity == null) return;
         if (State == SessionState.MissionComplete) return;
 
         var boarded = helicopterCapacity.BoardedCount;
-        var waiting = helipadZone.SoldiersWaitingCount;
+        var rescued = helicopterCapacity.TotalRescuedCount;
         var effectiveRequired = Mathf.Max(1, requiredSoldierCount);
 
-        if (boarded >= effectiveRequired)
+        if (rescued >= effectiveRequired)
         {
-            SetPhase(MissionPhase.ReadyToExtract);
-            var dist = Vector3.Distance(helicopterCapacity.transform.position, helipadCenter);
-            if (dist >= extractionDistanceFromHelipad)
+            SetPhase(MissionPhase.Complete);
+            if (!missionCompletePending && State != SessionState.MissionComplete)
             {
-                SetPhase(MissionPhase.Complete);
-                SetSessionState(SessionState.MissionComplete);
+                missionCompletePending = true;
+                missionCompleteRoutine = StartCoroutine(DelayedMissionComplete());
             }
-
             return;
         }
 
-        if (waiting > 0 || boarded > 0) SetPhase(MissionPhase.Boarding);
+        if (boarded > 0) SetPhase(MissionPhase.ReadyToExtract);
+        else if (rescued > 0) SetPhase(MissionPhase.Boarding);
         else SetPhase(MissionPhase.WaitingForBoarding);
+    }
+
+    private IEnumerator DelayedMissionComplete()
+    {
+        var delay = Mathf.Max(0f, missionCompleteDelaySeconds);
+        if (delay > 0f)
+            yield return new WaitForSeconds(delay);
+
+        missionCompletePending = false;
+        missionCompleteRoutine = null;
+        if (State != SessionState.MissionComplete)
+            SetSessionState(SessionState.MissionComplete);
     }
 
     private void SetSessionState(SessionState next)
     {
         if (State == next) return;
+        var previous = State;
         State = next;
 
         switch (State)
         {
             case SessionState.MainMenu:
-                SetSimulationScale(0f);
+                SetSimulationScale(0f, true);
                 SetGameplayInputEnabled(false);
                 break;
             case SessionState.Playing:
-                SetSimulationScale(1f);
+                SetSimulationScale(1f, previous == SessionState.Paused ? false : true);
                 SetGameplayInputEnabled(true);
                 if (autoSpawnSoldiersOnPlay && !soldiersSpawned && soldierSpawner != null)
                 {
@@ -185,29 +224,71 @@ public class GameFlowController : MonoBehaviour
                 }
                 break;
             case SessionState.Paused:
-                SetSimulationScale(0f);
+                SetSimulationScale(0f, false);
                 SetGameplayInputEnabled(false);
                 break;
             case SessionState.MissionComplete:
-                SetSimulationScale(0f);
+                SetSimulationScale(0f, true);
                 SetGameplayInputEnabled(false);
                 break;
         }
 
         onSessionStateChanged?.Invoke(State);
+        SessionStateChanged?.Invoke(previous, State);
     }
 
     private void SetPhase(MissionPhase next)
     {
         if (Phase == next) return;
+        var previous = Phase;
         Phase = next;
         onMissionPhaseChanged?.Invoke(Phase);
+        MissionPhaseChanged?.Invoke(previous, Phase);
     }
 
-    private void SetSimulationScale(float scale)
+    private void SetSimulationScale(float scale, bool instant)
     {
-        Time.timeScale = Mathf.Clamp(scale, 0f, 1f);
+        var target = Mathf.Clamp(scale, 0f, 1f);
+        if (instant)
+        {
+            if (timeScaleRoutine != null)
+            {
+                StopCoroutine(timeScaleRoutine);
+                timeScaleRoutine = null;
+            }
+            Time.timeScale = target;
+            Time.fixedDeltaTime = baseFixedDeltaTime * Mathf.Max(0f, Time.timeScale);
+            return;
+        }
+
+        var duration = target < Time.timeScale ? pauseFadeDuration : resumeFadeDuration;
+        if (duration <= 0.001f)
+        {
+            Time.timeScale = target;
+            Time.fixedDeltaTime = baseFixedDeltaTime * Mathf.Max(0f, Time.timeScale);
+            return;
+        }
+
+        if (timeScaleRoutine != null) StopCoroutine(timeScaleRoutine);
+        timeScaleRoutine = StartCoroutine(AnimateTimeScale(Time.timeScale, target, duration));
+    }
+
+    private IEnumerator AnimateTimeScale(float start, float target, float duration)
+    {
+        var t = 0f;
+        while (t < duration)
+        {
+            t += Time.unscaledDeltaTime;
+            var k = Mathf.Clamp01(t / duration);
+            k = k * k * (3f - 2f * k);
+            Time.timeScale = Mathf.Lerp(start, target, k);
+            Time.fixedDeltaTime = baseFixedDeltaTime * Mathf.Max(0f, Time.timeScale);
+            yield return null;
+        }
+
+        Time.timeScale = target;
         Time.fixedDeltaTime = baseFixedDeltaTime * Mathf.Max(0f, Time.timeScale);
+        timeScaleRoutine = null;
     }
 
     private void SetGameplayInputEnabled(bool enabled)
@@ -224,18 +305,16 @@ public class GameFlowController : MonoBehaviour
         if (helicopterCapacity == null) helicopterCapacity = FindFirstObjectByType<HelicopterCapacity>();
     }
 
-    private void ApplyHelicopterGroundHoldIfNeeded()
-    {
-        if (!enforceLowGroundHold || helicopterFlight == null) return;
-        helicopterFlight.ApplyGroundHoldProfile(
-            lowGroundClearance,
-            lowGroundHoldResponse,
-            lowGroundHoldDamping,
-            lowGroundMaxCorrectionSpeed);
-    }
-
     private void ResolveInputActions()
     {
+        if (useActionReferences)
+        {
+            startAction = startActionReference != null ? startActionReference.action : null;
+            pauseAction = pauseActionReference != null ? pauseActionReference.action : null;
+            resetAction = resetActionReference != null ? resetActionReference.action : null;
+            return;
+        }
+
         if (autoAssignInputAsset && inputActions == null)
         {
             var playerInput = FindFirstObjectByType<PlayerInput>();
