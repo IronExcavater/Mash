@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 
 [RequireComponent(typeof(Rigidbody))]
 public class HelicopterFlightController : MonoBehaviour
@@ -37,7 +38,7 @@ public class HelicopterFlightController : MonoBehaviour
     private class ZLockSettings
     {
         public bool enabled = true;
-        public float groundClearance = 8f;
+        public float groundClearance = 2.2f;
         public float groundClearanceProbeDistance = 150f;
         public float lookAheadTime = 1.05f;
         public float lookAheadMaxDistance = 28f;
@@ -130,14 +131,14 @@ public class HelicopterFlightController : MonoBehaviour
         public bool useGroundTagFiltering = true;
         public bool allowUntaggedWhenFiltering = true;
         public string[] allowedGroundTags = { "Terrain", "Ground", "GroundSurface", "Runway", "HoverGround" };
-        public string[] ignoredGroundTags = { "MilitaryBase", "BaseBuilding", "BaseStructure" };
+        public string[] ignoredGroundTags = { };
     }
 
     [System.Serializable]
     private class HoverZoneSettings
     {
         public bool enabled = true;
-        public bool requireTagMatch = true;
+        public bool requireTagMatch = false;
         public string[] acceptedZoneTags = { "HoverHeightZone", "HelicopterHoverZone" };
     }
 
@@ -216,6 +217,10 @@ public class HelicopterFlightController : MonoBehaviour
     [SerializeField] private HoverZoneSettings hoverZones = new HoverZoneSettings();
     [FieldHeader("Spawn")]
     [SerializeField] private SpawnSettings spawn = new SpawnSettings();
+    [FieldHeader("Startup Placement")]
+    [SerializeField] private bool reapplyPlacementAfterTerrainGeneration = true;
+    [ConditionalField("reapplyPlacementAfterTerrainGeneration", true)]
+    [SerializeField, Min(1)] private int placementRetryFramesAfterGeneration = 24;
     [FieldHeader("Ground Auto Engine Off")]
     [SerializeField] private AutoShutdownSettings autoShutdown = new AutoShutdownSettings();
     [FieldHeader("Engine Restart")]
@@ -246,7 +251,17 @@ public class HelicopterFlightController : MonoBehaviour
     private Collider[] cachedColliders;
     private readonly RaycastHit[] groundHitBuffer = new RaycastHit[16];
     private bool startupPlacementComplete;
-    private readonly Dictionary<int, float> activeHoverZoneOffsets = new Dictionary<int, float>();
+    private bool controlLockActive;
+    private TerrainGenerator terrainGenerator;
+    private Coroutine deferredPlacementRoutine;
+    private struct HoverZoneInfluence
+    {
+        public float clearanceOffset;
+        public float minimumWorldAltitude;
+        public float fixedWorldAltitude;
+    }
+
+    private readonly Dictionary<int, HoverZoneInfluence> activeHoverZones = new Dictionary<int, HoverZoneInfluence>();
 
     public bool IsInputEnabled => inputEnabled;
     public bool IsEngineOn => engineOn;
@@ -293,11 +308,18 @@ public class HelicopterFlightController : MonoBehaviour
     {
         ResolveActions();
         if (inputSettings.autoEnableActions) SetActionsEnabled(true);
+        SubscribeGenerationCallbacks();
     }
 
     private void OnDisable()
     {
         if (inputSettings.autoEnableActions) SetActionsEnabled(false);
+        UnsubscribeGenerationCallbacks();
+        if (deferredPlacementRoutine != null)
+        {
+            StopCoroutine(deferredPlacementRoutine);
+            deferredPlacementRoutine = null;
+        }
     }
 
     private void FixedUpdate()
@@ -306,6 +328,20 @@ public class HelicopterFlightController : MonoBehaviour
         if (!TryCompleteStartupPlacement()) return;
 
         var dt = Time.fixedDeltaTime;
+        if (controlLockActive)
+        {
+            UpdateEnginePower(dt);
+            if (body != null)
+            {
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+            currentMoveInput = Vector2.zero;
+            currentLiftTiltInput = Vector2.zero;
+            currentVerticalInput = 0f;
+            return;
+        }
+
         UpdateGroundState();
         UpdateEnginePower(dt);
 
@@ -368,6 +404,8 @@ public class HelicopterFlightController : MonoBehaviour
         {
             var clearance = (zLock.enabled ? zLock.groundClearance : spawn.clearanceAboveGround) + GetHoverZoneClearanceOffset();
             var targetY = nearestGroundY + clearance;
+            targetY = GetForcedHoverZoneAltitude(targetY);
+            targetY = Mathf.Max(targetY, GetHoverZoneMinimumWorldAltitude());
             heldAltitude = targetY;
             hasHeldAltitude = altitudeHold.enabled;
 
@@ -375,8 +413,11 @@ public class HelicopterFlightController : MonoBehaviour
             p.y = targetY;
             body.position = p;
             transform.position = p;
-            body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
-            body.angularVelocity = Vector3.zero;
+            if (!body.isKinematic)
+            {
+                body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
+                body.angularVelocity = Vector3.zero;
+            }
 
             startupPlacementComplete = true;
             return true;
@@ -386,6 +427,8 @@ public class HelicopterFlightController : MonoBehaviour
         {
             var clearance = (zLock.enabled ? zLock.groundClearance : spawn.clearanceAboveGround) + GetHoverZoneClearanceOffset();
             var targetY = terrainY + clearance;
+            targetY = GetForcedHoverZoneAltitude(targetY);
+            targetY = Mathf.Max(targetY, GetHoverZoneMinimumWorldAltitude());
             heldAltitude = targetY;
             hasHeldAltitude = altitudeHold.enabled;
 
@@ -393,8 +436,11 @@ public class HelicopterFlightController : MonoBehaviour
             p.y = targetY;
             body.position = p;
             transform.position = p;
-            body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
-            body.angularVelocity = Vector3.zero;
+            if (!body.isKinematic)
+            {
+                body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
+                body.angularVelocity = Vector3.zero;
+            }
 
             startupPlacementComplete = true;
             return true;
@@ -406,6 +452,26 @@ public class HelicopterFlightController : MonoBehaviour
     public void SetInputEnabled(bool isEnabled)
     {
         inputEnabled = isEnabled;
+    }
+
+    public void SetControlScheme(ControlScheme scheme)
+    {
+        if (controlScheme == scheme) return;
+        controlScheme = scheme;
+    }
+
+    public void SetControlLock(bool isLocked)
+    {
+        controlLockActive = isLocked;
+        if (!isLocked || body == null) return;
+        if (!body.isKinematic)
+        {
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+        }
+        currentMoveInput = Vector2.zero;
+        currentLiftTiltInput = Vector2.zero;
+        currentVerticalInput = 0f;
     }
 
     public void SetEngineOn(bool value)
@@ -421,23 +487,79 @@ public class HelicopterFlightController : MonoBehaviour
 
     public void ApplyGroundHoldProfile(float clearance, float response, float damping, float maxCorrectionSpeed)
     {
-        zLock.groundClearance = Mathf.Max(0.5f, clearance);
+        zLock.groundClearance = Mathf.Clamp(clearance, 0.5f, 1.35f);
         zLock.holdResponse = Mathf.Max(0.01f, response);
         zLock.holdDamping = Mathf.Max(0.01f, damping);
         zLock.maxCorrectionSpeed = Mathf.Max(0.01f, maxCorrectionSpeed);
     }
 
+    public void ReapplyStartupPlacementNow()
+    {
+        if (body == null) body = GetComponent<Rigidbody>();
+        startupPlacementComplete = false;
+        TryCompleteStartupPlacement();
+    }
+
+    private void SubscribeGenerationCallbacks()
+    {
+        if (!reapplyPlacementAfterTerrainGeneration) return;
+        if (terrainGenerator == null)
+            terrainGenerator = FindFirstObjectByType<TerrainGenerator>();
+        if (terrainGenerator == null) return;
+
+        terrainGenerator.GenerationCompleted -= HandleTerrainGenerated;
+        terrainGenerator.GenerationCompleted += HandleTerrainGenerated;
+    }
+
+    private void UnsubscribeGenerationCallbacks()
+    {
+        if (terrainGenerator == null) return;
+        terrainGenerator.GenerationCompleted -= HandleTerrainGenerated;
+    }
+
+    private void HandleTerrainGenerated()
+    {
+        if (!reapplyPlacementAfterTerrainGeneration) return;
+
+        if (deferredPlacementRoutine != null)
+            StopCoroutine(deferredPlacementRoutine);
+        deferredPlacementRoutine = StartCoroutine(DeferredStartupPlacementRetry());
+    }
+
+    private IEnumerator DeferredStartupPlacementRetry()
+    {
+        var attempts = Mathf.Max(1, placementRetryFramesAfterGeneration);
+        for (var i = 0; i < attempts; i++)
+        {
+            startupPlacementComplete = false;
+            if (TryCompleteStartupPlacement())
+            {
+                deferredPlacementRoutine = null;
+                yield break;
+            }
+
+            yield return null;
+        }
+
+        deferredPlacementRoutine = null;
+    }
+
     public void RegisterHoverZone(HelicopterHoverHeightZone zone)
     {
         if (zone == null || !hoverZones.enabled) return;
-        if (hoverZones.requireTagMatch && !MatchesAnyTag(zone.gameObject, hoverZones.acceptedZoneTags)) return;
-        activeHoverZoneOffsets[zone.GetInstanceID()] = Mathf.Max(0f, zone.AdditionalClearance);
+        var influence = new HoverZoneInfluence
+        {
+            clearanceOffset = Mathf.Max(0f, zone.AdditionalClearance),
+            minimumWorldAltitude = zone.TryGetMinimumWorldAltitude(out var minY) ? minY : float.NegativeInfinity,
+            fixedWorldAltitude = zone.TryGetFixedWorldAltitude(out var fixedY) ? fixedY : float.NegativeInfinity
+        };
+        activeHoverZones[zone.GetInstanceID()] = influence;
     }
 
     public void UnregisterHoverZone(HelicopterHoverHeightZone zone)
     {
         if (zone == null) return;
-        activeHoverZoneOffsets.Remove(zone.GetInstanceID());
+        activeHoverZones.Remove(zone.GetInstanceID());
     }
 
     private void UpdateGroundState()
@@ -466,9 +588,18 @@ public class HelicopterFlightController : MonoBehaviour
 
         if (zLock.enabled && engineOn && !isLanded)
         {
+            var forcedHoverAltitude = GetHoverZoneFixedWorldAltitude();
+            if (!float.IsNegativeInfinity(forcedHoverAltitude))
+            {
+                heldAltitude = forcedHoverAltitude;
+                hasHeldAltitude = true;
+                return;
+            }
+
             if (TryGetPredictiveGroundHeight(planarVelocity, out var groundY))
             {
                 var desiredHoldAltitude = groundY + zLock.groundClearance + GetHoverZoneClearanceOffset();
+                desiredHoldAltitude = Mathf.Max(desiredHoldAltitude, GetHoverZoneMinimumWorldAltitude());
                 heldAltitude = desiredHoldAltitude;
 
                 hasHeldAltitude = true;
@@ -478,6 +609,7 @@ public class HelicopterFlightController : MonoBehaviour
             if (TryGetGroundHeightBelow(body.position, zLock.groundClearanceProbeDistance, out var fallbackGroundY))
             {
                 heldAltitude = fallbackGroundY + zLock.groundClearance + GetHoverZoneClearanceOffset();
+                heldAltitude = Mathf.Max(heldAltitude, GetHoverZoneMinimumWorldAltitude());
                 hasHeldAltitude = true;
                 return;
             }
@@ -486,6 +618,13 @@ public class HelicopterFlightController : MonoBehaviour
         if (!engineOn || isLanded || Mathf.Abs(verticalInput) > 0.01f)
         {
             heldAltitude = body.position.y;
+            hasHeldAltitude = true;
+        }
+
+        var minAltitude = GetHoverZoneMinimumWorldAltitude();
+        if (!float.IsNegativeInfinity(minAltitude))
+        {
+            heldAltitude = Mathf.Max(heldAltitude, minAltitude);
             hasHeldAltitude = true;
         }
     }
@@ -832,6 +971,7 @@ public class HelicopterFlightController : MonoBehaviour
     private bool CanShutdownEngine()
     {
         UpdateGroundState();
+        if (!isLanded) return false;
         if (!IsNearGroundForShutdown()) return false;
         if (body == null) return isLanded;
 
@@ -1044,12 +1184,41 @@ public class HelicopterFlightController : MonoBehaviour
 
     private float GetHoverZoneClearanceOffset()
     {
-        if (!hoverZones.enabled || activeHoverZoneOffsets.Count == 0) return 0f;
+        if (!hoverZones.enabled || activeHoverZones.Count == 0) return 0f;
 
         var maxOffset = 0f;
-        foreach (var kv in activeHoverZoneOffsets)
-            if (kv.Value > maxOffset) maxOffset = kv.Value;
+        foreach (var kv in activeHoverZones)
+            if (kv.Value.clearanceOffset > maxOffset) maxOffset = kv.Value.clearanceOffset;
         return maxOffset;
+    }
+
+    private float GetHoverZoneFixedWorldAltitude()
+    {
+        if (!hoverZones.enabled || activeHoverZones.Count == 0) return float.NegativeInfinity;
+
+        var fixedAltitude = float.NegativeInfinity;
+        foreach (var kv in activeHoverZones)
+            if (kv.Value.fixedWorldAltitude > fixedAltitude)
+                fixedAltitude = kv.Value.fixedWorldAltitude;
+        return fixedAltitude;
+    }
+
+    private float GetForcedHoverZoneAltitude(float fallbackAltitude)
+    {
+        var forced = GetHoverZoneFixedWorldAltitude();
+        if (float.IsNegativeInfinity(forced)) return fallbackAltitude;
+        return forced;
+    }
+
+    private float GetHoverZoneMinimumWorldAltitude()
+    {
+        if (!hoverZones.enabled || activeHoverZones.Count == 0) return float.NegativeInfinity;
+
+        var maxMinimumAltitude = float.NegativeInfinity;
+        foreach (var kv in activeHoverZones)
+            if (kv.Value.minimumWorldAltitude > maxMinimumAltitude)
+                maxMinimumAltitude = kv.Value.minimumWorldAltitude;
+        return maxMinimumAltitude;
     }
 
     private bool IsValidGroundCollider(Collider col)

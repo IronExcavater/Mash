@@ -41,6 +41,8 @@ public class HelicopterCameraController : MonoBehaviour
     [SerializeField] private Transform target;
     [ConditionalField("autoAssignReferences", false)]
     [SerializeField] private HelicopterFlightController flightController;
+    [ConditionalField("autoAssignReferences", false)]
+    [SerializeField] private GameFlowController gameFlow;
 
     [Header("Mode")]
     [SerializeField] private CameraModeSource modeSource = CameraModeSource.FollowFlightController;
@@ -93,6 +95,19 @@ public class HelicopterCameraController : MonoBehaviour
     [ConditionalField("showComplexModeSettings", true)]
     [SerializeField] private Vector3 complexLookAtOffset = new Vector3(0f, 1.8f, 6f);
 
+    [Header("Menu Cinematic")]
+    [SerializeField] private bool useMenuCinematic = true;
+    [ConditionalField("useMenuCinematic", true)]
+    [SerializeField] private Vector3 menuLookAtOffset = new Vector3(0f, 2.5f, 0f);
+    [ConditionalField("useMenuCinematic", true)]
+    [SerializeField, Min(1f)] private float menuOrbitRadius = 13f;
+    [ConditionalField("useMenuCinematic", true)]
+    [SerializeField, Min(1f)] private float menuHeight = 6.5f;
+    [ConditionalField("useMenuCinematic", true)]
+    [SerializeField] private float menuOrbitSpeedDegrees = 12f;
+    [ConditionalField("useMenuCinematic", true)]
+    [SerializeField, Min(1f)] private float menuFov = 58f;
+
     private Camera attachedCamera;
     private Rigidbody targetBody;
     private float complexBlend;
@@ -100,6 +115,7 @@ public class HelicopterCameraController : MonoBehaviour
     [HideInInspector, SerializeField] private bool showSimpleModeSettings = true;
     [HideInInspector, SerializeField] private bool showComplexModeSettings = true;
     private bool loggedInvalidRig;
+    private float menuOrbitAngle;
 
     private void Awake()
     {
@@ -119,6 +135,12 @@ public class HelicopterCameraController : MonoBehaviour
         ResolveSectionVisibility();
         if (target == null) return;
         if (HasInvalidPlacement()) return;
+
+        if (useMenuCinematic && IsMenuStateActive())
+        {
+            UpdateMenuCinematicCamera(Time.unscaledDeltaTime);
+            return;
+        }
 
         var dt = Time.deltaTime;
         var targetBlend = ActiveControlScheme == HelicopterFlightController.ControlScheme.Complex ? 1f : 0f;
@@ -200,6 +222,9 @@ public class HelicopterCameraController : MonoBehaviour
 
         if (flightController == null)
             flightController = FindFirstObjectByType<HelicopterFlightController>();
+
+        if (gameFlow == null)
+            gameFlow = FindFirstObjectByType<GameFlowController>();
 
         if (target == null && flightController != null)
             target = flightController.transform;
@@ -310,5 +335,35 @@ public class HelicopterCameraController : MonoBehaviour
             : HelicopterFlightController.ControlScheme.Simple;
         showSimpleModeSettings = followMode == HelicopterFlightController.ControlScheme.Simple;
         showComplexModeSettings = followMode == HelicopterFlightController.ControlScheme.Complex;
+    }
+
+    private bool IsMenuStateActive()
+    {
+        if (gameFlow == null) return false;
+        return gameFlow.State == GameFlowController.SessionState.MainMenu ||
+               gameFlow.State == GameFlowController.SessionState.Paused ||
+               gameFlow.State == GameFlowController.SessionState.MissionComplete;
+    }
+
+    private void UpdateMenuCinematicCamera(float dtUnscaled)
+    {
+        if (target == null) return;
+
+        menuOrbitAngle = Mathf.Repeat(menuOrbitAngle + menuOrbitSpeedDegrees * Mathf.Max(0f, dtUnscaled), 360f);
+        var orbitDir = Quaternion.Euler(0f, menuOrbitAngle, 0f) * Vector3.forward;
+
+        var lookAt = target.position + target.TransformDirection(menuLookAtOffset);
+        var desiredPosition = lookAt + orbitDir * menuOrbitRadius + Vector3.up * menuHeight;
+        var toLook = lookAt - desiredPosition;
+        if (toLook.sqrMagnitude < 0.0001f) toLook = target.forward;
+        var desiredRotation = Quaternion.LookRotation(toLook.normalized, Vector3.up);
+
+        var positionLerp = GetFrameRateIndependentLerpFromPercent60Fps(22f, dtUnscaled);
+        var rotationLerp = GetFrameRateIndependentLerpFromPercent60Fps(26f, dtUnscaled);
+        transform.position = Vector3.Lerp(transform.position, desiredPosition, positionLerp);
+        transform.rotation = Quaternion.Slerp(transform.rotation, desiredRotation, rotationLerp);
+
+        if (attachedCamera != null)
+            attachedCamera.fieldOfView = Mathf.Lerp(attachedCamera.fieldOfView, menuFov, positionLerp);
     }
 }

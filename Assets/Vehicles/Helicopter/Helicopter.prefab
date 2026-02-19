@@ -13,6 +13,8 @@ GameObject:
   - component: {fileID: 1528362563376393166}
   - component: {fileID: 7308795645424243168}
   - component: {fileID: 9064869454901671569}
+  - component: {fileID: 9159895893455491368}
+  - component: {fileID: 5053635363682062087}
   m_Layer: 0
   m_Name: Helicopter
   m_TagString: Untagged
@@ -71,7 +73,7 @@ MonoBehaviour:
     liftUprightBlend: 0.15
   zLock:
     enabled: 1
-    groundClearance: 8
+    groundClearance: 6
     groundClearanceProbeDistance: 150
     lookAheadTime: 1.05
     lookAheadMaxDistance: 28
@@ -130,9 +132,30 @@ MonoBehaviour:
       m_Bits: 4294967295
     landedLockForce: 8
     landedLockTorque: 10
+  groundTagFilter:
+    useGroundTagFiltering: 1
+    allowUntaggedWhenFiltering: 1
+    allowedGroundTags:
+    - Terrain
+    - Ground
+    - GroundSurface
+    - Runway
+    - HoverGround
+    ignoredGroundTags:
+    - MilitaryBase
+    - BaseBuilding
+    - BaseStructure
+  hoverZones:
+    enabled: 1
+    requireTagMatch: 1
+    acceptedZoneTags:
+    - HoverHeightZone
+    - HelicopterHoverZone
   spawn:
     clearanceAboveGround: 10
     groundProbeDistance: 300
+  reapplyPlacementAfterTerrainGeneration: 1
+  placementRetryFramesAfterGeneration: 24
   autoShutdown:
     enabled: 1
     delay: 1.75
@@ -233,14 +256,151 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   hazardTag: Tree
+  ignoreHazardsInsideMilitaryBase: 0
+  militaryBaseSafePadding: 10
   disableMotorOnHazardHit: 1
+  disableFlightControllerComponentOnHazardHit: 1
   logHitDetails: 0
+  triggerCrashSequence: 1
+  crashDuration: 7.4
+  spinPhaseDuration: 2.8
+  liftPhaseDuration: 0.55
+  initialImpactForce: 14
+  initialUpKickForce: 2.2
+  initialSpinTorque: 12
+  tumbleTorque: 10
+  downwardAcceleration: 9.5
+  upwardLiftAcceleration: 8.5
+  spinAroundUpTorque: 22
+  randomTorqueNoise: 6
+  postCrashLinearDamping: 3.8
+  postCrashAngularDamping: 7.5
+  maxCrashAngularSpeed: 5.5
+  collisionEscapeDistance: 1.1
+  lockControlsAfterCrash: 1
+  ignoreAllHazardCollisionsAfterCrash: 1
   onAnyCollision:
     m_PersistentCalls:
       m_Calls: []
   onHazardCollision:
     m_PersistentCalls:
       m_Calls: []
+  onCrashStarted:
+    m_PersistentCalls:
+      m_Calls: []
+  onCrashCompleted:
+    m_PersistentCalls:
+      m_Calls: []
+  autoAssignAudioSource: 1
+  sfxSource: {fileID: 0}
+  hazardHitClips:
+  - {fileID: 8300000, guid: 7f24bf4c0bf7e684cb4a351045e88b11, type: 3}
+  crashStartClips:
+  - {fileID: 8300000, guid: 5ea91ac2af9c0ea4f95e6fb8eb3302e8, type: 3}
+  - {fileID: 8300000, guid: f0ce5629f1e1fde4cb00ef579e7197c4, type: 3}
+  crashGroundImpactClips:
+  - {fileID: 8300000, guid: 5ea91ac2af9c0ea4f95e6fb8eb3302e8, type: 3}
+  - {fileID: 8300000, guid: f0ce5629f1e1fde4cb00ef579e7197c4, type: 3}
+  - {fileID: 8300000, guid: 5ded220c2cd860948afdf8dbf748fa5c, type: 3}
+  crashCompleteClips:
+  - {fileID: 8300000, guid: f0ce5629f1e1fde4cb00ef579e7197c4, type: 3}
+  - {fileID: 8300000, guid: 5ded220c2cd860948afdf8dbf748fa5c, type: 3}
+  crashBurnLoopClips:
+  - {fileID: 8300000, guid: 9749981bb938ecf4293829657273a761, type: 3}
+  cockpitAlarmClip: {fileID: 8300000, guid: d9eb26d30334f0d4ab02a7cc5351801e, type: 3}
+  cockpitAlarmVolume: 0.82
+  hazardHitVolume: 0.9
+  crashStartVolume: 1
+  crashCompleteVolume: 0.95
+  useUnityBuiltInCrashParticles: 1
+  spawnTreeImpactParticles: 1
+  treeImpactParticleSize: 1.2
+  treeImpactParticleLifetime: 1.25
+  smokeEffectPrefab: {fileID: 0}
+  fireEffectPrefab: {fileID: 0}
+  crashEffectsAnchor: {fileID: 0}
+  detachPartsOnCrash: 1
+  detachableParts: []
+  detachedPartImpulse: 5
+--- !u!114 &9159895893455491368
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8070011900795780186}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ec5c5b34df5c5dc41b76e3fabb74a911, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HelicopterCapacity
+  maxSeats: 3
+  requireLandedToBoard: 1
+  boardMaxVerticalSpeed: 2.25
+  boardMaxPlanarSpeed: 4.25
+  allowAssistedCloseRangeBoarding: 1
+  assistedBoardingPlanarDistance: 6.5
+  assistedBoardingHeightDelta: 16
+  pickupPointLocalOffset: {x: 0, y: -2.75, z: 0}
+  pickupDetectionRadius: 3.5
+  pickupDetectionHeight: 10
+  autoAssignReferences: 1
+  flightController: {fileID: 0}
+  seatPoints: []
+  autoAssignAudioSource: 1
+  audioSource: {fileID: 0}
+  soldierPickupClips: []
+  capacityFullClips: []
+  rescueUnloadClips: []
+  pickupVolume: 1
+  fullCapacityVolume: 0.85
+  rescueVolume: 1
+  onCapacityChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  onCapacityFull:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &5053635363682062087
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8070011900795780186}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d485bbef5e66354fa8a6bacca48a9ce, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MapBounds
+  autoAssignReferences: 1
+  baseGenerator: {fileID: 0}
+  helicopterBody: {fileID: 1528362563376393166}
+  helicopterCrash: {fileID: 9064869454901671569}
+  forcefieldVisual: {fileID: 0}
+  fallbackRadius: 560
+  softBoundaryPadding: 340
+  hardBoundaryPadding: 500
+  inwardForce: 20
+  outwardVelocityDamping: 5
+  hardBoundaryForceBoost: 36
+  boundaryForceExponent: 1.55
+  minimumInwardRecoverySpeed: 8
+  anticipatoryLookAheadSeconds: 1.1
+  anticipatoryDistanceWeight: 0.9
+  tangentialVelocityDamping: 1.2
+  nearHardBoundaryInwardBoost: 24
+  hardBoundarySnapInwardBias: 0.02
+  hardBoundaryMaxOutwardVelocity: 0.75
+  softBoundaryMaxOutwardVelocity: 1.5
+  manageVisualsOnThisComponent: 0
+  showForcefieldVisual: 1
+  forcefieldColor: {r: 0.14, g: 0.65, b: 1, a: 0.16}
+  revealDistanceFromBoundary: 110
+  farInteriorAlpha: 0
+  pulseSpeed: 1.6
+  pulseScale: 0.03
+  pulseAlpha: 0.08
 --- !u!1001 &7239815516515108804
 PrefabInstance:
   m_ObjectHideFlags: 0

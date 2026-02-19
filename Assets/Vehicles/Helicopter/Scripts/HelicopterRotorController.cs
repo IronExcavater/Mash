@@ -38,6 +38,7 @@ public class HelicopterRotorController : MonoBehaviour
     [SerializeField, MinMaxInt(0f, 1f)] private MinMaxFloat rotorVolumeRange = new MinMaxFloat(0.2f, 0.85f);
 
     private HelicopterFlightController flightController;
+    private HelicopterCollisionHandler collisionHandler;
     private Rigidbody body;
 
     private Transform mainSpinTransform;
@@ -49,12 +50,14 @@ public class HelicopterRotorController : MonoBehaviour
     private float tailRotorAngle;
     private float mainRotorSpeed;
     private float tailRotorSpeed;
+    private bool forceStopped;
 
     private void Awake()
     {
         if (autoAssignRotors) TryAutoAssignRotors();
 
         flightController = GetComponent<HelicopterFlightController>();
+        collisionHandler = GetComponent<HelicopterCollisionHandler>();
         body = GetComponent<Rigidbody>();
 
         mainSpinTransform = CreateSpinTransform(mainRotorTransform, spinMainAroundMeshCenter);
@@ -68,6 +71,21 @@ public class HelicopterRotorController : MonoBehaviour
     private void LateUpdate()
     {
         var dt = Time.deltaTime;
+        if (collisionHandler != null && (collisionHandler.IsCrashing || collisionHandler.IsCrashComplete))
+            forceStopped = true;
+
+        if (forceStopped)
+        {
+            mainRotorSpeed = Mathf.MoveTowards(mainRotorSpeed, 0f, spoolUpRate * dt * 1.35f);
+            tailRotorSpeed = Mathf.MoveTowards(tailRotorSpeed, 0f, spoolUpRate * dt * 1.35f);
+            mainRotorAngle = Mathf.Repeat(mainRotorAngle + mainRotorSpeed * dt, 360f);
+            tailRotorAngle = Mathf.Repeat(tailRotorAngle + tailRotorSpeed * dt, 360f);
+            ApplySpin(mainSpinTransform, mainBaseRotation, mainRotorLocalAxis, mainRotorAngle);
+            ApplySpin(tailSpinTransform, tailBaseRotation, tailRotorLocalAxis, tailRotorAngle);
+            if (rotorAudioSource != null && rotorAudioSource.isPlaying) rotorAudioSource.Stop();
+            return;
+        }
+
         var engineOn = flightController == null || flightController.IsEngineOn;
         var motion01 = GetMotionAmount01();
         var accel = engineOn ? spoolUpRate : spoolDownRate;
@@ -84,6 +102,13 @@ public class HelicopterRotorController : MonoBehaviour
         ApplySpin(mainSpinTransform, mainBaseRotation, mainRotorLocalAxis, mainRotorAngle);
         ApplySpin(tailSpinTransform, tailBaseRotation, tailRotorLocalAxis, tailRotorAngle);
         UpdateRotorAudio();
+    }
+
+    public void SetForceStopped(bool stopped)
+    {
+        forceStopped = stopped;
+        if (forceStopped && rotorAudioSource != null && rotorAudioSource.isPlaying)
+            rotorAudioSource.Stop();
     }
 
     [ContextMenu("Auto Assign Rotors")]

@@ -12,26 +12,42 @@ public class MapBounds : MonoBehaviour
     [ConditionalField("autoAssignReferences", false)]
     [SerializeField] private Rigidbody helicopterBody;
     [ConditionalField("autoAssignReferences", false)]
+    [SerializeField] private HelicopterCollisionHandler helicopterCrash;
+    [ConditionalField("autoAssignReferences", false)]
     [SerializeField] private Transform forcefieldVisual;
 
     [Header("Bounds")]
     [SerializeField, Min(80f)] private float fallbackRadius = 560f;
     [SerializeField, Min(0f)] private float softBoundaryPadding = 340f;
     [SerializeField, Min(0f)] private float hardBoundaryPadding = 500f;
-    [SerializeField, Min(0f)] private float inwardForce = 20f;
-    [SerializeField, Min(0f)] private float outwardVelocityDamping = 5f;
-    [SerializeField, Min(0f)] private float hardBoundaryForceBoost = 36f;
+    [SerializeField, Min(0f)] private float inwardForce = 12f;
+    [SerializeField, Min(0f)] private float outwardVelocityDamping = 2.6f;
+    [SerializeField, Min(0f)] private float hardBoundaryForceBoost = 18f;
     [SerializeField, Min(1f)] private float boundaryForceExponent = 1.55f;
-    [SerializeField, Min(0f)] private float minimumInwardRecoverySpeed = 8f;
+    [SerializeField, Min(0f)] private float minimumInwardRecoverySpeed = 2f;
+    [SerializeField, Min(0f)] private float anticipatoryLookAheadSeconds = 1.1f;
+    [SerializeField, Min(0f)] private float anticipatoryDistanceWeight = 0.9f;
+    [SerializeField, Min(0f)] private float tangentialVelocityDamping = 0.8f;
+    [SerializeField, Min(0f)] private float nearHardBoundaryInwardBoost = 10f;
+    [SerializeField, Range(0f, 1f)] private float hardBoundarySnapInwardBias = 0.01f;
+    [SerializeField, Min(0f)] private float hardBoundaryMaxOutwardVelocity = 0.75f;
+    [SerializeField, Min(0f)] private float softBoundaryMaxOutwardVelocity = 2.2f;
 
     [Header("Forcefield")]
     [SerializeField] private bool manageVisualsOnThisComponent = false;
+    [ConditionalField("manageVisualsOnThisComponent", true)]
     [SerializeField] private bool showForcefieldVisual = true;
+    [ConditionalField("manageVisualsOnThisComponent", true)]
     [SerializeField] private Color forcefieldColor = new Color(0.14f, 0.65f, 1f, 0.16f);
+    [ConditionalField("manageVisualsOnThisComponent", true)]
     [SerializeField, Min(1f)] private float revealDistanceFromBoundary = 110f;
+    [ConditionalField("manageVisualsOnThisComponent", true)]
     [SerializeField, Range(0f, 1f)] private float farInteriorAlpha = 0f;
+    [ConditionalField("manageVisualsOnThisComponent", true)]
     [SerializeField, Min(0f)] private float pulseSpeed = 1.6f;
+    [ConditionalField("manageVisualsOnThisComponent", true)]
     [SerializeField, Min(0f)] private float pulseScale = 0.03f;
+    [ConditionalField("manageVisualsOnThisComponent", true)]
     [SerializeField, Min(0f)] private float pulseAlpha = 0.08f;
 
     private Renderer forcefieldRenderer;
@@ -66,6 +82,8 @@ public class MapBounds : MonoBehaviour
     {
         ResolveReferences();
         if (helicopterBody == null) return;
+        if (helicopterCrash != null && (helicopterCrash.IsCrashing || helicopterCrash.IsCrashComplete))
+            return;
         if (manageVisualsOnThisComponent) UpdateVisual();
 
         var center = BoundsCenter;
@@ -76,36 +94,65 @@ public class MapBounds : MonoBehaviour
         var toPos = pos - center;
         toPos.y = 0f;
         var dist = toPos.magnitude;
-        if (dist <= softRadius) return;
+
+        var velocity = helicopterBody.linearVelocity;
+        var planarVel = new Vector3(velocity.x, 0f, velocity.z);
+        var predictedPos = pos + planarVel * Mathf.Max(0f, anticipatoryLookAheadSeconds);
+        var predictedDelta = predictedPos - center;
+        predictedDelta.y = 0f;
+        var predictedDist = predictedDelta.magnitude;
+        var effectiveDist = Mathf.Max(dist, Mathf.Lerp(dist, predictedDist, Mathf.Clamp01(anticipatoryDistanceWeight)));
+        if (effectiveDist <= softRadius) return;
 
         var outward = dist > 0.001f ? toPos / dist : Vector3.zero;
         var inward = -outward;
-        var overSoft = dist - softRadius;
+        var overSoft = effectiveDist - softRadius;
         var softRange = Mathf.Max(0.001f, hardRadius - softRadius);
         var force01 = Mathf.Clamp01(overSoft / softRange);
         var curvedForce = Mathf.Pow(force01, boundaryForceExponent);
         var totalInwardForce = inwardForce * curvedForce;
         if (force01 > 0.85f)
             totalInwardForce += hardBoundaryForceBoost * ((force01 - 0.85f) / 0.15f);
+        if (force01 > 0.6f)
+            totalInwardForce += nearHardBoundaryInwardBoost * ((force01 - 0.6f) / 0.4f);
         helicopterBody.AddForce(inward * totalInwardForce, ForceMode.Acceleration);
 
-        var velocity = helicopterBody.linearVelocity;
-        var planarVel = new Vector3(velocity.x, 0f, velocity.z);
         var outwardSpeed = Vector3.Dot(planarVel, outward);
         if (outwardSpeed > 0f)
         {
             var damp = outward * outwardSpeed * outwardVelocityDamping * force01;
             helicopterBody.AddForce(-damp, ForceMode.Acceleration);
+
+            var maxSoftOutward = Mathf.Lerp(softBoundaryMaxOutwardVelocity, hardBoundaryMaxOutwardVelocity, force01);
+            if (outwardSpeed > maxSoftOutward)
+            {
+                var corrected = velocity - outward * (outwardSpeed - maxSoftOutward);
+                helicopterBody.linearVelocity = corrected;
+                velocity = corrected;
+                planarVel = new Vector3(corrected.x, 0f, corrected.z);
+                outwardSpeed = maxSoftOutward;
+            }
+        }
+
+        var tangential = planarVel - outward * outwardSpeed;
+        if (tangential.sqrMagnitude > 0.0001f)
+        {
+            var tangentialDamp = tangential * tangentialVelocityDamping * force01;
+            helicopterBody.AddForce(-tangentialDamp, ForceMode.Acceleration);
         }
 
         if (dist <= hardRadius) return;
-        var clamped = center + outward * hardRadius;
+        var snapRadius = hardRadius * (1f - Mathf.Clamp01(hardBoundarySnapInwardBias));
+        var clamped = center + outward * snapRadius;
         clamped.y = pos.y;
         helicopterBody.position = clamped;
-        var velocityAfterClamp = Vector3.ProjectOnPlane(helicopterBody.linearVelocity, outward);
+        var velocityAfterClamp = helicopterBody.linearVelocity;
+        var outwardAfterClamp = Vector3.Dot(velocityAfterClamp, outward);
+        if (outwardAfterClamp > 0f)
+            velocityAfterClamp -= outward * outwardAfterClamp;
         var inwardSpeed = Vector3.Dot(velocityAfterClamp, inward);
         if (inwardSpeed < minimumInwardRecoverySpeed)
-            velocityAfterClamp += inward * (minimumInwardRecoverySpeed - inwardSpeed);
+            velocityAfterClamp += inward * (minimumInwardRecoverySpeed - inwardSpeed) * 0.35f;
         helicopterBody.linearVelocity = velocityAfterClamp;
     }
 
@@ -142,6 +189,7 @@ public class MapBounds : MonoBehaviour
     {
         if (!autoAssignReferences) return;
         if (helicopterBody == null) helicopterBody = GetComponent<Rigidbody>();
+        if (helicopterCrash == null) helicopterCrash = GetComponent<HelicopterCollisionHandler>();
         if (baseGenerator == null) baseGenerator = FindFirstObjectByType<MilitaryBaseGenerator>();
         var existing = GameObject.Find("Map Bounds");
         if (existing != null && forcefieldVisual != existing.transform)

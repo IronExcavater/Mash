@@ -57,6 +57,7 @@ public class TerrainGenerator : MonoBehaviour
         seed = CreateRandomSeed();
     }
 
+    [Button("Generate Terrain", 26f)]
     [ContextMenu("Generate Terrain")]
     public void GenerateTerrain()
     {
@@ -73,6 +74,9 @@ public class TerrainGenerator : MonoBehaviour
         }
 
         GenerateTerrainImmediate();
+#if UNITY_EDITOR
+        ReapplyHelicopterStartupHeightEditorOnly();
+#endif
     }
 
     private void GenerateTerrainImmediate()
@@ -1212,14 +1216,26 @@ public class TerrainGenerator : MonoBehaviour
         return activeTrees || activeObjects || activeRoad;
     }
 
+    [Button("Generate New Seed", 26f)]
     public void GenerateNewSeed()
     {
         seed = CreateRandomSeed();
 #if UNITY_EDITOR
         QueueEditorSeedRefreshIfNeeded();
+        ReapplyHelicopterStartupHeightEditorOnly();
         EditorUtility.SetDirty(this);
 #endif
     }
+
+#if UNITY_EDITOR
+    private static void ReapplyHelicopterStartupHeightEditorOnly()
+    {
+        var helicopter = FindFirstObjectByType<HelicopterFlightController>();
+        if (helicopter == null) return;
+        helicopter.ReapplyStartupPlacementNow();
+        EditorUtility.SetDirty(helicopter);
+    }
+#endif
 
     private static int CreateRandomSeed()
     {

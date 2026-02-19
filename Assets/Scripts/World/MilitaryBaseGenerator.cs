@@ -2,6 +2,9 @@ using System.Collections.Generic;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 [ExecuteAlways]
 [AddComponentMenu("World/Military Base Generator")]
@@ -111,6 +114,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
         }
     }
 
+    [Button("Generate Military Base", 26f)]
     [ContextMenu("Build Or Refresh Base")]
     public void BuildOrRefreshBase()
     {
@@ -123,6 +127,9 @@ public class MilitaryBaseGenerator : MonoBehaviour
         }
 
         BuildOrRefreshBaseImmediate();
+#if UNITY_EDITOR
+        ReapplyHelicopterStartupHeightEditorOnly();
+#endif
     }
 
     private void BuildOrRefreshBaseImmediate()
@@ -924,5 +931,15 @@ public class MilitaryBaseGenerator : MonoBehaviour
 #endif
         }
     }
+
+#if UNITY_EDITOR
+    private static void ReapplyHelicopterStartupHeightEditorOnly()
+    {
+        var helicopter = Object.FindFirstObjectByType<HelicopterFlightController>();
+        if (helicopter == null) return;
+        helicopter.ReapplyStartupPlacementNow();
+        EditorUtility.SetDirty(helicopter);
+    }
+#endif
 
 }
