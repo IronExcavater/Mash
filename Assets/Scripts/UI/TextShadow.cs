@@ -56,15 +56,6 @@ public class TextShadow : MonoBehaviour
         if (sourceText == null || shadowText == null) return;
         shadowText.text = sourceText.text;
         shadowText.font = sourceText.font;
-        try
-        {
-            if (sourceText.fontSharedMaterial != null)
-                shadowText.fontSharedMaterial = sourceText.fontSharedMaterial;
-        }
-        catch
-        {
-            // TMP can be mid-initialization in editor validation passes.
-        }
         shadowText.fontSize = sourceText.fontSize;
         shadowText.enableAutoSizing = sourceText.enableAutoSizing;
         shadowText.fontSizeMin = sourceText.fontSizeMin;
