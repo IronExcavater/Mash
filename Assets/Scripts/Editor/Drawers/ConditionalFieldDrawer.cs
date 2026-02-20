@@ -7,11 +7,10 @@ public class ConditionalFieldDrawer : PropertyDrawer
 {
     private const float HeaderTopPadding = 6f;
     private static readonly float HeaderHeight = HeaderTopPadding + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-    private static readonly float HiddenHeight = -(EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing);
 
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
-        if (!SafeShouldShow(property)) return HiddenHeight;
+        if (!SafeShouldShow(property)) return 0f;
         var height = EditorGUI.GetPropertyHeight(property, label, true);
         var data = (ConditionalFieldAttribute)attribute;
         if (string.IsNullOrWhiteSpace(data.header)) return height;

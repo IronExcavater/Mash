@@ -9,22 +9,9 @@ public class FieldHeaderDrawer : PropertyDrawer
 
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
-        if (!SafeShouldShow(property)) return -(EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing);
-        var line = EditorGUIUtility.singleLineHeight;
-        if (!property.hasVisibleChildren || !property.isExpanded) return TopPadding + line;
-
-        var total = TopPadding + line + EditorGUIUtility.standardVerticalSpacing;
-        var it = property.Copy();
-        var end = it.GetEndProperty();
-        var enterChildren = true;
-
-        while (it.NextVisible(enterChildren) && !SerializedProperty.EqualContents(it, end))
-        {
-            total += EditorGUI.GetPropertyHeight(it, true) + EditorGUIUtility.standardVerticalSpacing;
-            enterChildren = false;
-        }
-
-        return total;
+        if (!SafeShouldShow(property)) return 0f;
+        return TopPadding + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing +
+               EditorGUI.GetPropertyHeight(property, label, true);
     }
 
     public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
@@ -33,28 +20,12 @@ public class FieldHeaderDrawer : PropertyDrawer
         var data = (FieldHeaderAttribute)attribute;
         var title = string.IsNullOrWhiteSpace(data.title) ? ObjectNames.NicifyVariableName(property.name) : data.title;
 
-        var foldoutStyle = new GUIStyle(EditorStyles.foldout) { fontStyle = FontStyle.Bold };
-        var line = EditorGUIUtility.singleLineHeight;
-        var headerRect = new Rect(position.x, position.y + TopPadding, position.width, line);
-        property.isExpanded = EditorGUI.Foldout(headerRect, property.isExpanded, title, true, foldoutStyle);
+        var headerRect = new Rect(position.x, position.y + TopPadding, position.width, EditorGUIUtility.singleLineHeight);
+        EditorGUI.LabelField(headerRect, title, EditorStyles.boldLabel);
 
-        if (!property.hasVisibleChildren || !property.isExpanded) return;
-
-        EditorGUI.indentLevel++;
-        var y = headerRect.yMax + EditorGUIUtility.standardVerticalSpacing;
-
-        var it = property.Copy();
-        var end = it.GetEndProperty();
-        var enterChildren = true;
-        while (it.NextVisible(enterChildren) && !SerializedProperty.EqualContents(it, end))
-        {
-            var h = EditorGUI.GetPropertyHeight(it, true);
-            var r = new Rect(position.x, y, position.width, h);
-            EditorGUI.PropertyField(r, it, true);
-            y += h + EditorGUIUtility.standardVerticalSpacing;
-            enterChildren = false;
-        }
-        EditorGUI.indentLevel--;
+        var propertyY = headerRect.yMax + EditorGUIUtility.standardVerticalSpacing;
+        var propertyRect = new Rect(position.x, propertyY, position.width, EditorGUI.GetPropertyHeight(property, label, true));
+        EditorGUI.PropertyField(propertyRect, property, label, true);
     }
 
     private bool SafeShouldShow(SerializedProperty property)
