@@ -496,7 +496,28 @@ public class MashGameUIController : MonoBehaviour
     {
         var t = transform.Find(pathOrName);
         if (t == null) t = FindDeepChildByName(transform, pathOrName);
-        return t != null ? t.GetComponent<TMP_Text>() : null;
+        if (t == null) return null;
+
+        var direct = t.GetComponent<TMP_Text>();
+        if (direct != null) return direct;
+
+        var mainChild = t.Find("MainText");
+        if (mainChild != null)
+        {
+            var mainText = mainChild.GetComponent<TMP_Text>();
+            if (mainText != null) return mainText;
+        }
+
+        var texts = t.GetComponentsInChildren<TMP_Text>(true);
+        for (var i = 0; i < texts.Length; i++)
+        {
+            var text = texts[i];
+            if (text == null) continue;
+            if (text.name == "ShadowText" || text.name == "ShadowCopy") continue;
+            return text;
+        }
+
+        return null;
     }
 
     private void ConfigureHelipadIndicator(bool shouldBeVisible)

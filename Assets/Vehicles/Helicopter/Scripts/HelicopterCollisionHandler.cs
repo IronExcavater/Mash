@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.Serialization;
 
 [RequireComponent(typeof(Rigidbody))]
 public class HelicopterCollisionHandler : MonoBehaviour
@@ -69,23 +70,28 @@ public class HelicopterCollisionHandler : MonoBehaviour
     [SerializeField] private AudioClip[] crashBurnLoopClips;
     [SerializeField] private AudioClip cockpitAlarmClip;
     [SerializeField, Range(0f, 1f)] private float cockpitAlarmVolume = 0.82f;
+    [SerializeField, Min(0f)] private float cockpitAlarmGain = 1.35f;
+    [SerializeField] private bool cockpitAlarmUse2D = true;
     [SerializeField, Range(0f, 1f)] private float hazardHitVolume = 0.9f;
     [SerializeField, Range(0f, 1f)] private float crashStartVolume = 1f;
     [SerializeField, Range(0f, 1f)] private float crashCompleteVolume = 0.95f;
-    [SerializeField] private bool useUnityBuiltInCrashParticles = true;
+    [SerializeField, Min(0f)] private float crashSfxGain = 1.25f;
+    [Header("Crash VFX")]
     [SerializeField] private bool spawnTreeImpactParticles = true;
     [ConditionalField("spawnTreeImpactParticles", true)]
     [SerializeField, Min(0f)] private float treeImpactParticleSize = 1.2f;
     [ConditionalField("spawnTreeImpactParticles", true)]
     [SerializeField, Min(0f)] private float treeImpactParticleLifetime = 1.25f;
-    [SerializeField] private ParticleSystem smokeEffectPrefab;
-    [SerializeField] private ParticleSystem fireEffectPrefab;
+    [ConditionalField("spawnTreeImpactParticles", true)]
+    [SerializeField, Min(1)] private int treeImpactBurstCount = 3;
+    [ConditionalField("spawnTreeImpactParticles", true)]
+    [SerializeField, Min(0f)] private float treeImpactBurstSpread = 0.5f;
+    [FormerlySerializedAs("smokeEffectPrefab")]
+    [SerializeField] private Object smokeEffectPrefab;
+    [FormerlySerializedAs("fireEffectPrefab")]
+    [SerializeField] private Object fireEffectPrefab;
+    [SerializeField] private Object treeImpactEffectPrefab;
     [SerializeField] private Transform crashEffectsAnchor;
-    [SerializeField] private bool detachPartsOnCrash = true;
-    [ConditionalField("detachPartsOnCrash", true)]
-    [SerializeField] private Transform[] detachableParts;
-    [ConditionalField("detachPartsOnCrash", true)]
-    [SerializeField, Min(0f)] private float detachedPartImpulse = 5f;
 
     private HelicopterFlightController flightController;
     private HelicopterRotorController rotorController;
@@ -170,7 +176,7 @@ public class HelicopterCollisionHandler : MonoBehaviour
             BeginCrashSequence(point, normal, impactSpeed);
 
         onHazardCollision?.Invoke();
-        PlayRandomClip(hazardHitClips, hazardHitVolume, ref lastHazardHitClipIndex);
+        PlayRandomClip(hazardHitClips, hazardHitVolume * crashSfxGain, ref lastHazardHitClipIndex);
     }
 
     private void FixedUpdate()
@@ -231,7 +237,7 @@ public class HelicopterCollisionHandler : MonoBehaviour
         body.angularDamping = Mathf.Max(body.angularDamping, postCrashAngularDamping);
         StopCockpitAlarmLoop();
         onCrashCompleted?.Invoke();
-        PlayRandomClip(crashCompleteClips, crashCompleteVolume, ref lastCrashCompleteClipIndex);
+        PlayRandomClip(crashCompleteClips, crashCompleteVolume * crashSfxGain, ref lastCrashCompleteClipIndex);
     }
 
     private void BeginCrashSequence(Vector3 point, Vector3 normal, float impactSpeed)
@@ -275,11 +281,8 @@ public class HelicopterCollisionHandler : MonoBehaviour
             IgnoreAllLikelyTreeCollisions();
         }
 
-        if (detachPartsOnCrash)
-            DetachConfiguredParts(incoming);
-
         onCrashStarted?.Invoke();
-        PlayRandomClip(crashStartClips, crashStartVolume, ref lastCrashStartClipIndex);
+        PlayRandomClip(crashStartClips, crashStartVolume * crashSfxGain, ref lastCrashStartClipIndex);
         PlayCockpitAlarmLoop();
     }
 
@@ -324,32 +327,34 @@ public class HelicopterCollisionHandler : MonoBehaviour
     private void SpawnCrashEffects()
     {
         var anchor = crashEffectsAnchor != null ? crashEffectsAnchor : transform;
-
-        if (useUnityBuiltInCrashParticles)
-        {
+        var spawnedSmoke = SpawnOptionalEffect(smokeEffectPrefab, anchor.position, anchor.rotation, anchor);
+        var spawnedFire = SpawnOptionalEffect(fireEffectPrefab, anchor.position + Vector3.up * 0.35f, anchor.rotation, anchor);
+        if (!spawnedSmoke && !spawnedFire)
             CreateUnityCrashFireAndSmoke(anchor);
-        }
-        else
-        {
-            if (smokeEffectPrefab != null)
-                Instantiate(smokeEffectPrefab, anchor.position, anchor.rotation, anchor);
-            else
-                CreateFallbackCrashEffect(anchor.position, new Color(0.18f, 0.18f, 0.18f, 0.8f), 42, 1.3f, 2.8f);
-
-            if (fireEffectPrefab != null)
-                Instantiate(fireEffectPrefab, anchor.position + Vector3.up * 0.35f, anchor.rotation, anchor);
-            else
-                CreateFallbackCrashEffect(anchor.position + Vector3.up * 0.25f, new Color(1f, 0.42f, 0.1f, 0.9f), 32, 0.8f, 1.8f);
-        }
 
         PlayCrashBurnLoop();
     }
 
     private void SpawnTreeImpactParticles(Vector3 point, Vector3 normal)
     {
+        var safeNormal = normal.sqrMagnitude > 0.001f ? normal : Vector3.up;
+        var spawnedPrefabEffect = false;
+        var burstCount = Mathf.Max(1, treeImpactBurstCount);
+        for (var i = 0; i < burstCount; i++)
+        {
+            var randomOffset = Random.insideUnitSphere * treeImpactBurstSpread;
+            randomOffset = Vector3.ProjectOnPlane(randomOffset, safeNormal);
+            var burstPoint = point + safeNormal * 0.15f + randomOffset;
+            var burstRotation = Quaternion.LookRotation((safeNormal + Random.insideUnitSphere * 0.15f).normalized, Vector3.up);
+            spawnedPrefabEffect |= SpawnOptionalEffect(treeImpactEffectPrefab, burstPoint, burstRotation, null);
+        }
+
+        if (spawnedPrefabEffect)
+            return;
+
         var go = new GameObject("TreeImpactBurst");
-        go.transform.position = point + normal * 0.15f;
-        go.transform.rotation = Quaternion.LookRotation(normal.sqrMagnitude > 0.001f ? normal : Vector3.up, Vector3.up);
+        go.transform.position = point + safeNormal * 0.15f;
+        go.transform.rotation = Quaternion.LookRotation(safeNormal, Vector3.up);
 
         var ps = go.AddComponent<ParticleSystem>();
         ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -400,6 +405,40 @@ public class HelicopterCollisionHandler : MonoBehaviour
 
         ps.Play();
         Object.Destroy(go, Mathf.Max(2f, treeImpactParticleLifetime + 1.2f));
+    }
+
+    private static bool SpawnOptionalEffect(Object effectPrefab, Vector3 position, Quaternion rotation, Transform parent)
+    {
+        if (effectPrefab == null) return false;
+        Object spawned = null;
+        if (effectPrefab is GameObject prefabGo)
+            spawned = Object.Instantiate(prefabGo, position, rotation, parent);
+        else if (effectPrefab is Component prefabComponent)
+            spawned = Object.Instantiate(prefabComponent, position, rotation, parent);
+        if (spawned == null) return false;
+
+        var spawnedGo = spawned as GameObject;
+        if (spawnedGo == null && spawned is Component spawnedComponent)
+            spawnedGo = spawnedComponent.gameObject;
+        if (spawnedGo == null) return false;
+
+        var particleSystems = spawnedGo.GetComponentsInChildren<ParticleSystem>(true);
+        if (particleSystems == null || particleSystems.Length == 0) return true;
+
+        var maxDuration = 0f;
+        for (var i = 0; i < particleSystems.Length; i++)
+        {
+            var ps = particleSystems[i];
+            if (ps == null) continue;
+            ps.Play(true);
+            var main = ps.main;
+            var duration = Mathf.Max(0.1f, main.duration + main.startLifetime.constantMax + 0.5f);
+            if (main.loop) duration = Mathf.Max(duration, 15f);
+            if (duration > maxDuration) maxDuration = duration;
+        }
+
+        if (maxDuration > 0f) Object.Destroy(spawnedGo, maxDuration);
+        return true;
     }
 
     private static void CreateUnityCrashFireAndSmoke(Transform anchor)
@@ -608,29 +647,6 @@ public class HelicopterCollisionHandler : MonoBehaviour
         Object.Destroy(go, 10f);
     }
 
-    private void DetachConfiguredParts(Vector3 incomingDirection)
-    {
-        if (detachableParts == null || detachableParts.Length == 0) return;
-        for (var i = 0; i < detachableParts.Length; i++)
-        {
-            var part = detachableParts[i];
-            if (part == null) continue;
-            part.SetParent(null, true);
-            var rb = part.GetComponent<Rigidbody>();
-            if (rb == null) rb = part.gameObject.AddComponent<Rigidbody>();
-            rb.mass = Mathf.Max(0.2f, rb.mass);
-            rb.interpolation = RigidbodyInterpolation.Interpolate;
-            rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-
-            var col = part.GetComponent<Collider>();
-            if (col == null) col = part.gameObject.AddComponent<BoxCollider>();
-
-            var impulseDir = (incomingDirection + Random.onUnitSphere * 0.6f + Vector3.up * 0.4f).normalized;
-            rb.AddForce(impulseDir * detachedPartImpulse, ForceMode.VelocityChange);
-            rb.AddTorque(Random.onUnitSphere * detachedPartImpulse * 0.75f, ForceMode.VelocityChange);
-        }
-    }
-
     private void EnsureAudioSource()
     {
         if (autoAssignAudioSource && sfxSource == null)
@@ -675,9 +691,9 @@ public class HelicopterCollisionHandler : MonoBehaviour
 
     private void PlayGroundImpactAudio()
     {
-        PlayRandomClip(crashGroundImpactClips, Mathf.Clamp01(crashStartVolume), ref lastCrashGroundImpactClipIndex);
+        PlayRandomClip(crashGroundImpactClips, crashStartVolume * crashSfxGain, ref lastCrashGroundImpactClipIndex);
         // Layer a second transient for more impact on touchdown.
-        PlayRandomClip(crashCompleteClips, Mathf.Clamp01(crashCompleteVolume * 0.7f), ref lastCrashCompleteClipIndex);
+        PlayRandomClip(crashCompleteClips, crashCompleteVolume * 0.85f * crashSfxGain, ref lastCrashCompleteClipIndex);
     }
 
     private void PlayCockpitAlarmLoop()
@@ -690,11 +706,18 @@ public class HelicopterCollisionHandler : MonoBehaviour
             cockpitAlarmSource = loopGo.AddComponent<AudioSource>();
             cockpitAlarmSource.playOnAwake = false;
             cockpitAlarmSource.loop = true;
-            cockpitAlarmSource.spatialBlend = 1f;
+            cockpitAlarmSource.spatialBlend = cockpitAlarmUse2D ? 0f : 1f;
+            cockpitAlarmSource.rolloffMode = AudioRolloffMode.Linear;
+            cockpitAlarmSource.minDistance = 12f;
+            cockpitAlarmSource.maxDistance = 120f;
+        }
+        else
+        {
+            cockpitAlarmSource.spatialBlend = cockpitAlarmUse2D ? 0f : 1f;
         }
 
         cockpitAlarmSource.clip = cockpitAlarmClip;
-        cockpitAlarmSource.volume = Mathf.Clamp01(cockpitAlarmVolume);
+        cockpitAlarmSource.volume = Mathf.Clamp01(cockpitAlarmVolume * Mathf.Max(0f, cockpitAlarmGain));
         cockpitAlarmSource.pitch = 1f;
         if (!cockpitAlarmSource.isPlaying) cockpitAlarmSource.Play();
     }

@@ -312,16 +312,13 @@ MonoBehaviour:
   hazardHitVolume: 0.9
   crashStartVolume: 1
   crashCompleteVolume: 0.95
-  useUnityBuiltInCrashParticles: 1
   spawnTreeImpactParticles: 1
   treeImpactParticleSize: 1.2
   treeImpactParticleLifetime: 1.25
-  smokeEffectPrefab: {fileID: 0}
-  fireEffectPrefab: {fileID: 0}
+  smokeEffectPrefab: {fileID: 100100000, guid: 1a365141225c22e49a7bb976869b22a8, type: 3}
+  fireEffectPrefab: {fileID: 100100000, guid: bb98861c48ad2024ca93498c7dd93a6c, type: 3}
+  treeImpactEffectPrefab: {fileID: 100100000, guid: 3c0b5f221ea995442b9d11dc526de1c0, type: 3}
   crashEffectsAnchor: {fileID: 0}
-  detachPartsOnCrash: 1
-  detachableParts: []
-  detachedPartImpulse: 5
 --- !u!114 &9159895893455491368
 MonoBehaviour:
   m_ObjectHideFlags: 0
