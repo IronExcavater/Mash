@@ -309,12 +309,17 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 9749981bb938ecf4293829657273a761, type: 3}
   cockpitAlarmClip: {fileID: 8300000, guid: d9eb26d30334f0d4ab02a7cc5351801e, type: 3}
   cockpitAlarmVolume: 0.82
+  cockpitAlarmGain: 1.35
+  cockpitAlarmUse2D: 1
   hazardHitVolume: 0.9
   crashStartVolume: 1
   crashCompleteVolume: 0.95
+  crashSfxGain: 1.25
   spawnTreeImpactParticles: 1
   treeImpactParticleSize: 1.2
   treeImpactParticleLifetime: 1.25
+  treeImpactBurstCount: 3
+  treeImpactBurstSpread: 0.5
   smokeEffectPrefab: {fileID: 100100000, guid: 1a365141225c22e49a7bb976869b22a8, type: 3}
   fireEffectPrefab: {fileID: 100100000, guid: bb98861c48ad2024ca93498c7dd93a6c, type: 3}
   treeImpactEffectPrefab: {fileID: 100100000, guid: 3c0b5f221ea995442b9d11dc526de1c0, type: 3}
@@ -377,7 +382,7 @@ MonoBehaviour:
   forcefieldVisual: {fileID: 0}
   fallbackRadius: 560
   softBoundaryPadding: 340
-  hardBoundaryPadding: 500
+  hardBoundaryPadding: 410
   inwardForce: 20
   outwardVelocityDamping: 5
   hardBoundaryForceBoost: 36

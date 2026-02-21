@@ -501,7 +501,7 @@ public class MashGameUIController : MonoBehaviour
         var direct = t.GetComponent<TMP_Text>();
         if (direct != null) return direct;
 
-        var mainChild = t.Find("MainText");
+        var mainChild = t.Find("Main");
         if (mainChild != null)
         {
             var mainText = mainChild.GetComponent<TMP_Text>();
@@ -513,7 +513,7 @@ public class MashGameUIController : MonoBehaviour
         {
             var text = texts[i];
             if (text == null) continue;
-            if (text.name == "ShadowText" || text.name == "ShadowCopy") continue;
+            if (text.transform.parent != null && text.transform.parent.name == "Shadow") continue;
             return text;
         }
 

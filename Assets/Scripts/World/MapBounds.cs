@@ -95,66 +95,69 @@ public class MapBounds : MonoBehaviour
         var toPos = pos - center;
         toPos.y = 0f;
         var dist = toPos.magnitude;
+        if (dist <= softRadius) return;
 
         var velocity = helicopterBody.linearVelocity;
         var planarVel = new Vector3(velocity.x, 0f, velocity.z);
+        var outward = dist > 0.001f ? toPos / dist : Vector3.zero;
+        var inward = -outward;
+
+        var zoneWidth = Mathf.Max(0.001f, hardRadius - softRadius);
+        var edge01 = Mathf.Clamp01((dist - softRadius) / zoneWidth);
+
         var predictedPos = pos + planarVel * Mathf.Max(0f, anticipatoryLookAheadSeconds);
         var predictedDelta = predictedPos - center;
         predictedDelta.y = 0f;
         var predictedDist = predictedDelta.magnitude;
-        var effectiveDist = Mathf.Max(dist, Mathf.Lerp(dist, predictedDist, Mathf.Clamp01(anticipatoryDistanceWeight)));
-        if (effectiveDist <= softRadius) return;
-
-        var outward = dist > 0.001f ? toPos / dist : Vector3.zero;
-        var inward = -outward;
-        var overSoft = effectiveDist - softRadius;
-        var softRange = Mathf.Max(0.001f, hardRadius - softRadius);
-        var force01 = Mathf.Clamp01(overSoft / softRange);
-        var curvedForce = Mathf.Pow(force01, boundaryForceExponent);
-        var totalInwardForce = inwardForce * curvedForce;
-        if (force01 > 0.85f)
-            totalInwardForce += hardBoundaryForceBoost * ((force01 - 0.85f) / 0.15f);
-        if (force01 > 0.6f)
-            totalInwardForce += nearHardBoundaryInwardBoost * ((force01 - 0.6f) / 0.4f);
-        helicopterBody.AddForce(inward * totalInwardForce, ForceMode.Acceleration);
+        if (predictedDist > dist)
+        {
+            var predictedEdge = Mathf.Clamp01((predictedDist - softRadius) / zoneWidth);
+            edge01 = Mathf.Max(edge01, Mathf.Lerp(edge01, predictedEdge, Mathf.Clamp01(anticipatoryDistanceWeight)));
+        }
 
         var outwardSpeed = Vector3.Dot(planarVel, outward);
-        if (outwardSpeed > 0f)
-        {
-            var damp = outward * outwardSpeed * outwardVelocityDamping * force01;
-            helicopterBody.AddForce(-damp, ForceMode.Acceleration);
+        var edgeCurve = Mathf.Pow(edge01, boundaryForceExponent);
 
-            var maxSoftOutward = Mathf.Lerp(softBoundaryMaxOutwardVelocity, hardBoundaryMaxOutwardVelocity, force01);
-            if (outwardSpeed > maxSoftOutward)
-            {
-                var corrected = velocity - outward * (outwardSpeed - maxSoftOutward);
-                helicopterBody.linearVelocity = corrected;
-                velocity = corrected;
-                planarVel = new Vector3(corrected.x, 0f, corrected.z);
-                outwardSpeed = maxSoftOutward;
-            }
-        }
+        var pushAccel = inwardForce * (0.35f + edgeCurve);
+        pushAccel += hardBoundaryForceBoost * edgeCurve;
+        pushAccel += nearHardBoundaryInwardBoost * Mathf.SmoothStep(0f, 1f, edge01);
+
+        var desiredOutwardSpeed = Mathf.Lerp(0f, -minimumInwardRecoverySpeed, edge01);
+        var speedError = desiredOutwardSpeed - outwardSpeed;
+        var speedCorrectionAccel = speedError * outwardVelocityDamping;
+        var finalInwardAccel = Mathf.Max(0f, pushAccel + speedCorrectionAccel);
+        helicopterBody.AddForce(inward * finalInwardAccel, ForceMode.Acceleration);
 
         var tangential = planarVel - outward * outwardSpeed;
         if (tangential.sqrMagnitude > 0.0001f)
         {
-            var tangentialDamp = tangential * tangentialVelocityDamping * force01;
+            var tangentialDamp = tangential * tangentialVelocityDamping * (0.2f + edge01);
             helicopterBody.AddForce(-tangentialDamp, ForceMode.Acceleration);
         }
 
-        if (dist <= hardRadius) return;
-        var snapRadius = hardRadius * (1f - Mathf.Clamp01(hardBoundarySnapInwardBias));
-        var clamped = center + outward * snapRadius;
-        clamped.y = pos.y;
-        helicopterBody.position = clamped;
-        var velocityAfterClamp = helicopterBody.linearVelocity;
-        var outwardAfterClamp = Vector3.Dot(velocityAfterClamp, outward);
-        if (outwardAfterClamp > 0f)
-            velocityAfterClamp -= outward * outwardAfterClamp;
-        var inwardSpeed = Vector3.Dot(velocityAfterClamp, inward);
-        if (inwardSpeed < minimumInwardRecoverySpeed)
-            velocityAfterClamp += inward * (minimumInwardRecoverySpeed - inwardSpeed) * 0.35f;
-        helicopterBody.linearVelocity = velocityAfterClamp;
+        if (dist > hardRadius)
+        {
+            var clampRadius = hardRadius * (1f - Mathf.Clamp01(hardBoundarySnapInwardBias));
+            var clampedPos = center + outward * clampRadius;
+            clampedPos.y = pos.y;
+            helicopterBody.position = clampedPos;
+
+            var clampedVelocity = helicopterBody.linearVelocity;
+            var planarClamped = new Vector3(clampedVelocity.x, 0f, clampedVelocity.z);
+            var clampedOutwardSpeed = Vector3.Dot(planarClamped, outward);
+            if (clampedOutwardSpeed > hardBoundaryMaxOutwardVelocity)
+                clampedVelocity -= outward * (clampedOutwardSpeed - hardBoundaryMaxOutwardVelocity);
+
+            var clampedInwardSpeed = -Vector3.Dot(new Vector3(clampedVelocity.x, 0f, clampedVelocity.z), outward);
+            if (clampedInwardSpeed < minimumInwardRecoverySpeed * 0.5f)
+                clampedVelocity += inward * (minimumInwardRecoverySpeed * 0.5f - clampedInwardSpeed);
+
+            helicopterBody.linearVelocity = clampedVelocity;
+        }
+        else if (outwardSpeed > softBoundaryMaxOutwardVelocity)
+        {
+            helicopterBody.linearVelocity = velocity - outward * (outwardSpeed - softBoundaryMaxOutwardVelocity);
+        }
     }
 
     private void Update()
@@ -240,7 +243,8 @@ public class MapBounds : MonoBehaviour
 
         var reveal = ComputeRevealFactor();
         var c = forcefieldColor;
-        c.a = Mathf.Clamp01(Mathf.Lerp(farInteriorAlpha, forcefieldColor.a, reveal) + Mathf.Sin(Time.unscaledTime * pulseSpeed * 1.4f) * pulseAlpha * reveal);
+        var pulse = Mathf.Sin(Time.unscaledTime * pulseSpeed * 1.4f) * pulseAlpha * (1f + pulseScale);
+        c.a = Mathf.Clamp01(Mathf.Lerp(farInteriorAlpha, forcefieldColor.a, reveal) + pulse * reveal);
 
         ApplyForcefieldMaterialSettings(c);
     }
