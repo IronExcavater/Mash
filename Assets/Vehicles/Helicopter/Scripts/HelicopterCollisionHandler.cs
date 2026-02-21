@@ -107,6 +107,7 @@ public class HelicopterCollisionHandler : MonoBehaviour
     private int lastCrashCompleteClipIndex = -1;
     private int lastCrashBurnClipIndex = -1;
     private bool wreckEffectsSpawned;
+    private float crashSpinDirection = 1f;
     private AudioSource burnLoopSource;
     private AudioSource cockpitAlarmSource;
     private static Material cachedParticleAdditiveMaterial;
@@ -197,7 +198,7 @@ public class HelicopterCollisionHandler : MonoBehaviour
         if (inSpinPhase)
         {
             var inLiftPhase = crashTimer < liftPhaseDuration;
-            body.AddTorque(Vector3.up * spinAroundUpTorque * Mathf.Lerp(1f, 0.6f, crashTimer / Mathf.Max(0.1f, spinPhaseDuration)), ForceMode.Acceleration);
+            body.AddTorque(Vector3.up * crashSpinDirection * spinAroundUpTorque * Mathf.Lerp(1f, 0.6f, crashTimer / Mathf.Max(0.1f, spinPhaseDuration)), ForceMode.Acceleration);
             body.AddTorque((tumbleAxis * tumbleTorque + torqueNoise) * (inLiftPhase ? 0.4f : 0.55f), ForceMode.Acceleration);
             if (inLiftPhase)
                 body.AddForce(Vector3.up * upwardLiftAcceleration * Mathf.Lerp(1f, 0.2f, crashTimer / Mathf.Max(0.05f, liftPhaseDuration)), ForceMode.Acceleration);
@@ -250,6 +251,10 @@ public class HelicopterCollisionHandler : MonoBehaviour
         wreckEffectsSpawned = false;
         crashCenter = point;
         crashNormal = normal.sqrMagnitude > 0.0001f ? normal.normalized : Vector3.up;
+        if (Mathf.Abs(LastLocalHitDirection.x) > 0.001f)
+            crashSpinDirection = LastLocalHitDirection.x > 0f ? 1f : -1f;
+        else
+            crashSpinDirection = Random.value < 0.5f ? -1f : 1f;
 
         if (flightController != null)
         {
@@ -270,7 +275,7 @@ public class HelicopterCollisionHandler : MonoBehaviour
         var spinAxis = Vector3.Cross(crashNormal, incoming);
         if (spinAxis.sqrMagnitude < 0.001f) spinAxis = transform.right;
         spinAxis.Normalize();
-        body.AddTorque((spinAxis + Random.onUnitSphere * 0.45f) * initialSpinTorque, ForceMode.VelocityChange);
+        body.AddTorque((spinAxis * crashSpinDirection + Random.onUnitSphere * 0.45f) * initialSpinTorque, ForceMode.VelocityChange);
         var separation = -crashNormal + incoming;
         if (separation.sqrMagnitude > 0.0001f)
             body.position += separation.normalized * Mathf.Max(0f, collisionEscapeDistance);

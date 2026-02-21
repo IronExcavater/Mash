@@ -32,8 +32,9 @@ public class VoiceCommsController : MonoBehaviour
     [SerializeField] private AudioClip[] soldierPickupRadioClips;
     [SerializeField] private AudioClip[] soldierDropoffRadioClips;
     [SerializeField] private AudioClip[] capacityFullRadioClips;
-    [SerializeField, Range(0f, 1f)] private float voiceVolume = 0.78f;
-    [SerializeField, Range(0f, 1f)] private float radioInVolume = 0.72f;
+    [SerializeField, Range(0f, 1f)] private float voiceVolume = 0.42f;
+    [SerializeField, Range(0f, 1f)] private float radioInVolume = 0.35f;
+    [SerializeField, Range(0f, 1f)] private float commsMasterVolume = 0.6f;
     [SerializeField, Min(0f)] private float delayAfterRadioInSeconds = 0.07f;
 
     private readonly Queue<CommsMessage> messageQueue = new Queue<CommsMessage>();
@@ -187,13 +188,13 @@ public class VoiceCommsController : MonoBehaviour
 
             if (message.useRadioIn && radioInSfxClip != null)
             {
-                audioSource.PlayOneShot(radioInSfxClip, Mathf.Clamp01(radioInVolume));
+                audioSource.PlayOneShot(radioInSfxClip, Mathf.Clamp01(radioInVolume * commsMasterVolume));
                 yield return new WaitForSecondsRealtime(radioInSfxClip.length + Mathf.Max(0f, delayAfterRadioInSeconds));
             }
 
             if (message.clip != null)
             {
-                audioSource.PlayOneShot(message.clip, Mathf.Clamp01(voiceVolume));
+                audioSource.PlayOneShot(message.clip, Mathf.Clamp01(voiceVolume * commsMasterVolume));
                 yield return new WaitForSecondsRealtime(message.clip.length);
             }
         }
