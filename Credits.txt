@@ -65,3 +65,5 @@ Gun Shots From a Long Distance (9) by FilmmakersManual (Freesound) -- https://pi
 Gun Shots From a Long Distance (2) by FilmmakersManual (Freesound) -- https://pixabay.com/sound-effects/film-special-effects-gun-shots-from-a-long-distance-2-39729/ -- License: Pixabay Content License (attribution not required)
 
 Rapid Fire Sub Machine Gun distant by SuperPhat (Freesound) -- https://pixabay.com/sound-effects/film-special-effects-rapid-fire-sub-machine-gun-distant-30193/ -- License: Pixabay Content License (attribution not required)
+
+Retro Shaders Pro for URP by Daniel Ilett -- https://assetstore.unity.com/packages/vfx/shaders/retro-shaders-pro-for-urp-287937 -- License: Unity Asset Store EULA

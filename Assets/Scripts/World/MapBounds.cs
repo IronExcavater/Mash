@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [ExecuteAlways]
 [RequireComponent(typeof(Rigidbody))]
@@ -215,6 +216,14 @@ public class MapBounds : MonoBehaviour
             if (fallback != null) forcefieldMaterial = new Material(fallback);
             forcefieldRenderer.sharedMaterial = forcefieldMaterial;
         }
+        else if (IsRetroLitForcefield(forcefieldMaterial))
+        {
+            var fallback = ResolveForcefieldShader();
+            if (fallback != null && forcefieldMaterial.shader != fallback)
+            {
+                forcefieldMaterial.shader = fallback;
+            }
+        }
         ApplyForcefieldMaterialSettings(forcefieldColor);
     }
 
@@ -228,10 +237,6 @@ public class MapBounds : MonoBehaviour
 
         forcefieldVisual.gameObject.SetActive(showForcefieldVisual);
         if (!showForcefieldVisual) return;
-
-        var center = BoundsCenter;
-        var pulse = 1f + Mathf.Sin(Time.unscaledTime * pulseSpeed) * pulseScale;
-        // Visual transform is controlled by MapBoundsVisualController on the map-bounds object.
 
         var reveal = ComputeRevealFactor();
         var c = forcefieldColor;
@@ -286,7 +291,10 @@ public class MapBounds : MonoBehaviour
 
     private static Shader ResolveForcefieldShader()
     {
-        var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        var shader = Shader.Find("Ultimate 10 Plus/Force Field");
+        if (shader == null) shader = Shader.Find("Force Field");
+        if (shader == null) shader = Shader.Find("Ultimate 10 Plus Shaders/Force Field");
+        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
         if (shader == null) shader = Shader.Find("Shader Graphs/Respawn");
         if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
@@ -294,22 +302,46 @@ public class MapBounds : MonoBehaviour
         return shader;
     }
 
+    private static bool IsRetroLitForcefield(Material mat)
+    {
+        if (mat == null || mat.shader == null) return false;
+        var matName = mat.name.ToLowerInvariant();
+        if (!matName.Contains("force") && !matName.Contains("field")) return false;
+        return mat.shader.name.ToLowerInvariant().Contains("retro shaders pro/retro lit");
+    }
+
     private void ApplyForcefieldMaterialSettings(Color color)
     {
         if (forcefieldMaterial == null) return;
         forcefieldMaterial.color = color;
         if (forcefieldMaterial.HasProperty("_BaseColor")) forcefieldMaterial.SetColor("_BaseColor", color);
+        ApplyTransparentForcefieldRenderState();
         if (forcefieldMaterial.HasProperty("_EmissionColor"))
         {
             forcefieldMaterial.EnableKeyword("_EMISSION");
             forcefieldMaterial.SetColor("_EmissionColor", new Color(color.r, color.g, color.b, 1f) * 0.9f);
         }
 
-        // Force visible from inside + outside where shader supports culling controls.
         if (forcefieldMaterial.HasProperty("_Cull")) forcefieldMaterial.SetFloat("_Cull", 0f);
         if (forcefieldMaterial.HasProperty("_CullMode")) forcefieldMaterial.SetFloat("_CullMode", 0f);
         if (forcefieldMaterial.HasProperty("_RenderFace")) forcefieldMaterial.SetFloat("_RenderFace", 2f);
         if (forcefieldMaterial.HasProperty("_DoubleSidedEnable")) forcefieldMaterial.SetFloat("_DoubleSidedEnable", 1f);
+    }
+
+    private void ApplyTransparentForcefieldRenderState()
+    {
+        if (forcefieldMaterial == null) return;
+
+        if (forcefieldMaterial.HasProperty("_Surface")) forcefieldMaterial.SetFloat("_Surface", 1f);
+        if (forcefieldMaterial.HasProperty("_Blend")) forcefieldMaterial.SetFloat("_Blend", 0f);
+        if (forcefieldMaterial.HasProperty("_SrcBlend")) forcefieldMaterial.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+        if (forcefieldMaterial.HasProperty("_DstBlend")) forcefieldMaterial.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+        if (forcefieldMaterial.HasProperty("_SrcBlendAlpha")) forcefieldMaterial.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
+        if (forcefieldMaterial.HasProperty("_DstBlendAlpha")) forcefieldMaterial.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
+        if (forcefieldMaterial.HasProperty("_ZWrite")) forcefieldMaterial.SetFloat("_ZWrite", 0f);
+
+        forcefieldMaterial.SetOverrideTag("RenderType", "Transparent");
+        forcefieldMaterial.renderQueue = (int)RenderQueue.Transparent;
     }
 
     private void OnDrawGizmosSelected()

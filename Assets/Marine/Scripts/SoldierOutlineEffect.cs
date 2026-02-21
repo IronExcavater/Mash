@@ -1,5 +1,5 @@
-using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine;
 
 [DisallowMultipleComponent]
 [AddComponentMenu("Gameplay/Soldiers/Soldier Outline Effect")]
@@ -8,9 +8,9 @@ public class SoldierOutlineEffect : MonoBehaviour
     [SerializeField] private Color outlineColor = Color.white;
     [SerializeField, Range(0.001f, 0.08f)] private float outlineThickness = 0.026f;
 
-    private const string OutlineShaderPath = "Mash/SoldierDepthOutline";
+    private const string OutlineShaderPath = "Retro Shaders Pro/Retro Outline";
     private Material outlineMaterialInstance;
-    private readonly Dictionary<Renderer, Material[]> originalMaterials = new Dictionary<Renderer, Material[]>();
+    private readonly Dictionary<Renderer, Material[]> originalMaterials = new();
 
     private void OnEnable()
     {
@@ -33,8 +33,14 @@ public class SoldierOutlineEffect : MonoBehaviour
         EnsureOutlineMaterial();
         if (outlineMaterialInstance == null) return;
 
-        outlineMaterialInstance.SetColor("_OutlineColor", outlineColor);
-        outlineMaterialInstance.SetFloat("_OutlineWidth", outlineThickness);
+        if (outlineMaterialInstance.HasProperty("_BaseColor"))
+            outlineMaterialInstance.SetColor("_BaseColor", outlineColor);
+        if (outlineMaterialInstance.HasProperty("_Thickness"))
+            outlineMaterialInstance.SetFloat("_Thickness", outlineThickness);
+        if (outlineMaterialInstance.HasProperty("_SnapsPerUnit"))
+            outlineMaterialInstance.SetInt("_SnapsPerUnit", 96);
+        if (outlineMaterialInstance.HasProperty("_SnapMode"))
+            outlineMaterialInstance.SetFloat("_SnapMode", 2f); // View
 
         var renderers = GetComponentsInChildren<Renderer>(true);
         for (var i = 0; i < renderers.Length; i++)
@@ -48,7 +54,7 @@ public class SoldierOutlineEffect : MonoBehaviour
 
             var existing = renderer.sharedMaterials;
             var expanded = new Material[existing.Length + 1];
-            for (var m = 0; m < existing.Length; m++) expanded[m] = existing[m];
+            existing.CopyTo(expanded, 0);
             expanded[expanded.Length - 1] = outlineMaterialInstance;
             originalMaterials[renderer] = existing;
             renderer.sharedMaterials = expanded;
@@ -76,10 +82,14 @@ public class SoldierOutlineEffect : MonoBehaviour
     {
         if (outlineMaterialInstance != null) return;
         var shader = Shader.Find(OutlineShaderPath);
-        if (shader == null) return;
+        if (shader == null)
+        {
+            Debug.LogWarning($"Soldier outline shader not found at '{OutlineShaderPath}'.", this);
+            return;
+        }
         outlineMaterialInstance = new Material(shader)
         {
-            name = "SoldierDepthOutlineMaterial",
+            name = "SoldierRetroOutlineMaterial",
             hideFlags = HideFlags.DontSave
         };
     }
