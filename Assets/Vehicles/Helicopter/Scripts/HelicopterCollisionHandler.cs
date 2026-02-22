@@ -47,8 +47,6 @@ public class HelicopterCollisionHandler : MonoBehaviour
     [ConditionalField("triggerCrashSequence", true)]
     [SerializeField, Min(0f)] private float maxCrashAngularSpeed = 5.5f;
     [ConditionalField("triggerCrashSequence", true)]
-    [SerializeField, Min(0f)] private float collisionEscapeDistance = 1.1f;
-    [ConditionalField("triggerCrashSequence", true)]
     [SerializeField] private bool lockControlsAfterCrash = true;
     [ConditionalField("triggerCrashSequence", true)]
     [SerializeField] private bool ignoreAllHazardCollisionsAfterCrash = true;
@@ -276,9 +274,6 @@ public class HelicopterCollisionHandler : MonoBehaviour
         if (spinAxis.sqrMagnitude < 0.001f) spinAxis = transform.right;
         spinAxis.Normalize();
         body.AddTorque((spinAxis * crashSpinDirection + Random.onUnitSphere * 0.45f) * initialSpinTorque, ForceMode.VelocityChange);
-        var separation = -crashNormal + incoming;
-        if (separation.sqrMagnitude > 0.0001f)
-            body.position += separation.normalized * Mathf.Max(0f, collisionEscapeDistance);
         IgnoreCollisionWithHazard();
         if (ignoreAllHazardCollisionsAfterCrash)
         {

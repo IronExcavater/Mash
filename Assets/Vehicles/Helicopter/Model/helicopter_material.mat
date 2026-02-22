@@ -114,7 +114,7 @@ Material:
     - _SnapsPerUnit: 64
     m_Floats:
     - _AddPrecomputedVelocity: 0
-    - _AffineTextureStrength: 1
+    - _AffineTextureStrength: 0
     - _AlphaClip: 0
     - _AlphaToMask: 0
     - _AmbientLight: 0.02

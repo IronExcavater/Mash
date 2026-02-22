@@ -84,6 +84,8 @@ public class MashGameUIController : MonoBehaviour
     [SerializeField] private UnityEngine.UI.Slider soundMasterVolumeSlider;
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private TMP_Dropdown gameplayControlModeDropdown;
+    [ConditionalField("autoAssignUiBindings", false, "Loading")]
+    [SerializeField] private TMP_Text loadingLabelText;
 
     [Header("Settings")]
     [SerializeField] private string inHelicopterFormat = "In Heli: {0}/{1}";
@@ -95,9 +97,6 @@ public class MashGameUIController : MonoBehaviour
     [SerializeField] private bool hideTerrainLoadingWithFade = true;
     [ConditionalField("hideTerrainLoadingWithFade", true)]
     [SerializeField, Min(0.01f)] private float loadingMinimumVisibleTime = 0.35f;
-    [SerializeField] private bool loadingShowsHelicopterAndSkyOnly = true;
-    [ConditionalField("loadingShowsHelicopterAndSkyOnly", true)]
-    [SerializeField, Min(5f)] private float loadingShowcaseHeight = 12f;
     [SerializeField, Min(0f)] private float crashMenuDelaySeconds = 5.25f;
 
     private bool listenersBound;
@@ -106,30 +105,18 @@ public class MashGameUIController : MonoBehaviour
     private float loadingShownAtUnscaledTime;
     private Coroutine loadingHideRoutine;
     private bool terrainEventsSubscribed;
-    private readonly List<Renderer> hiddenWorldRenderers = new List<Renderer>();
-    private readonly List<TerrainVisibilityState> hiddenTerrains = new List<TerrainVisibilityState>();
     private bool waitingOutcomeMenuDelay;
     private float outcomeDetectedAtUnscaledTime;
     private readonly Dictionary<CanvasGroup, Coroutine> fadeRoutines = new Dictionary<CanvasGroup, Coroutine>();
     private readonly Dictionary<CanvasGroup, bool> panelVisibilityTargets = new Dictionary<CanvasGroup, bool>();
-    private bool loadingShowcaseApplied;
-    private Vector3 cachedHelicopterPosition;
-    private Quaternion cachedHelicopterRotation;
-    private Vector3 cachedHelicopterLinearVelocity;
-    private Vector3 cachedHelicopterAngularVelocity;
-    private bool cachedHelicopterKinematic;
-    private bool cachedHelicopterDetectCollisions;
-    private RigidbodyConstraints cachedHelicopterConstraints;
-    private Rigidbody cachedHelicopterBody;
-    private Transform cachedHelicopterRoot;
-    private bool offscreenTemplateSanitized;
+    private bool initialLayoutPrepared;
 
     private void Awake()
     {
         if (crashMenuDelaySeconds < 0f) crashMenuDelaySeconds = 0f;
         ResolveReferences();
         BindButtonListeners();
-        RefreshUI(false);
+        RefreshUI(true);
     }
 
     private void OnEnable()
@@ -137,7 +124,12 @@ public class MashGameUIController : MonoBehaviour
         ResolveReferences();
         BindButtonListeners();
         BindTerrainEvents();
-        RefreshUI(false);
+        RefreshUI(true);
+    }
+
+    private void Start()
+    {
+        PrepareInitialLayout();
     }
 
     private void Update()
@@ -181,13 +173,13 @@ public class MashGameUIController : MonoBehaviour
         missionPhaseText ??= FindTextByName("WaitingSoldiersRow/ValueLabel");
         missionStateText ??= FindTextByName("MissionStateLabel");
         AutoAssign(ref helipadIndicator, "HelipadOffscreenIndicator");
-        EnsureOnlyRuntimeOffscreenIndicatorIsVisible();
         mainMenuTitleText ??= FindTextByName("MainMenuTitleLabel");
         mainMenuSubtitleText ??= FindTextByName("MainMenuSubtitleLabel");
         AutoAssign(ref displayFullscreenToggle, "DisplayFullscreenToggle");
         AutoAssign(ref displayModeDropdown, "DisplayModeDropdown");
         AutoAssign(ref soundMasterVolumeSlider, "SoundMasterVolumeSlider");
         AutoAssign(ref gameplayControlModeDropdown, "GameplayControlModeDropdown");
+        loadingLabelText ??= FindTextByName("LoadingOverlayPanel/LoadingLabel");
     }
 
     private void BindButtonListeners()
@@ -273,6 +265,7 @@ public class MashGameUIController : MonoBehaviour
         ApplyPanelVisibility(force, settingsRoot, showMenu && settingsOpen);
         ApplyPanelVisibility(force, mainMenuContentRoot, showMenu && !settingsOpen);
         ApplyPanelVisibility(force, loadingRoot, showLoading);
+        UpdateLoadingOverlayVisuals(showLoading);
 
         var boarded = helicopterCapacity?.BoardedCount ?? 0;
         var maxSeats = helicopterCapacity?.MaxSeats ?? 0;
@@ -330,6 +323,56 @@ public class MashGameUIController : MonoBehaviour
         if (group.gameObject.activeSelf != visible) group.gameObject.SetActive(visible);
     }
 
+    private void PrepareInitialLayout()
+    {
+        if (initialLayoutPrepared) return;
+        initialLayoutPrepared = true;
+
+        ForceLayout(mainMenuRoot);
+        ForceLayout(mainMenuContentRoot);
+        ForceLayout(pauseMenuRoot);
+        ForceLayout(hudRoot);
+        ForceLayout(settingsRoot);
+        ForceLayout(loadingRoot);
+        Canvas.ForceUpdateCanvases();
+        ForceRefreshBlurImages();
+        RefreshUI(true);
+    }
+
+    private static void ForceLayout(CanvasGroup group)
+    {
+        if (group == null) return;
+        var rect = group.transform as RectTransform;
+        if (rect == null) return;
+        UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+    }
+
+    private static void ForceRefreshBlurImages()
+    {
+        var blurImages = FindObjectsByType<Kamgam.UGUIBlurredBackground.BlurredBackgroundImage>(FindObjectsSortMode.None);
+        for (var i = 0; i < blurImages.Length; i++)
+        {
+            var blur = blurImages[i];
+            if (blur == null) continue;
+            blur.SetVerticesDirty();
+            blur.SetMaterialDirty();
+        }
+    }
+
+    private void UpdateLoadingOverlayVisuals(bool visible)
+    {
+        if (!visible)
+        {
+            if (loadingLabelText != null) loadingLabelText.text = "LOADING";
+            return;
+        }
+
+        var elapsed = Mathf.Max(0f, Time.unscaledTime - loadingShownAtUnscaledTime);
+        var labelDots = Mathf.FloorToInt(elapsed * 2.5f) % 4;
+        if (loadingLabelText != null)
+            loadingLabelText.text = "LOADING" + new string('.', labelDots);
+    }
+
     private void ApplyPanelVisibility(bool immediate, CanvasGroup group, bool visible)
     {
         if (immediate) SetCanvasGroup(group, visible);
@@ -385,8 +428,6 @@ public class MashGameUIController : MonoBehaviour
     private void OnDisable()
     {
         UnbindTerrainEvents();
-        if (loadingShowsHelicopterAndSkyOnly)
-            ApplyLoadingWorldVisibility(false);
         foreach (var kv in fadeRoutines)
         {
             if (kv.Value != null) StopCoroutine(kv.Value);
@@ -493,21 +534,6 @@ public class MashGameUIController : MonoBehaviour
         helipadIndicator.hideWhenOnScreen = true;
 
         helipadIndicator.gameObject.SetActive(shouldBeVisible);
-    }
-
-    private void EnsureOnlyRuntimeOffscreenIndicatorIsVisible()
-    {
-        if (offscreenTemplateSanitized || helipadIndicator == null) return;
-
-        var templates = helipadIndicator.GetComponentsInChildren<OffScreenIndicatorObject>(true);
-        for (var i = 0; i < templates.Length; i++)
-        {
-            var template = templates[i];
-            if (template == null) continue;
-            template.gameObject.SetActive(false);
-        }
-
-        offscreenTemplateSanitized = true;
     }
 
     private void HandleMenuHotkeys()
@@ -748,8 +774,6 @@ public class MashGameUIController : MonoBehaviour
         if (!hideTerrainLoadingWithFade) return;
         isLoadingTerrain = true;
         loadingShownAtUnscaledTime = Time.unscaledTime;
-        if (loadingShowsHelicopterAndSkyOnly)
-            ApplyLoadingWorldVisibility(true);
         StopLoadingHideRoutine();
         RefreshUI(false);
     }
@@ -786,138 +810,8 @@ public class MashGameUIController : MonoBehaviour
             yield return new WaitForSecondsRealtime(remaining);
 
         isLoadingTerrain = false;
-        if (loadingShowsHelicopterAndSkyOnly)
-            ApplyLoadingWorldVisibility(false);
-        if (helicopterFlight != null)
-            helicopterFlight.ReapplyStartupPlacementNow();
         loadingHideRoutine = null;
         RefreshUI(false);
-    }
-
-    private void ApplyLoadingWorldVisibility(bool hideWorld)
-    {
-        if (hideWorld)
-        {
-            hiddenWorldRenderers.Clear();
-            hiddenTerrains.Clear();
-            var helicopterRoot = ResolveHelicopterRoot();
-            var renderers = FindObjectsByType<Renderer>(FindObjectsSortMode.None);
-            for (var i = 0; i < renderers.Length; i++)
-            {
-                var r = renderers[i];
-                if (r == null || !r.enabled) continue;
-                if (helicopterRoot != null && r.transform.IsChildOf(helicopterRoot)) continue;
-                r.enabled = false;
-                hiddenWorldRenderers.Add(r);
-            }
-
-            var terrains = FindObjectsByType<Terrain>(FindObjectsSortMode.None);
-            for (var i = 0; i < terrains.Length; i++)
-            {
-                var terrain = terrains[i];
-                if (terrain == null) continue;
-                hiddenTerrains.Add(new TerrainVisibilityState
-                {
-                    terrain = terrain,
-                    drawHeightmap = terrain.drawHeightmap,
-                    drawTreesAndFoliage = terrain.drawTreesAndFoliage
-                });
-                terrain.drawHeightmap = false;
-                terrain.drawTreesAndFoliage = false;
-            }
-
-            ApplyHelicopterLoadingShowcase(true);
-        }
-        else
-        {
-            for (var i = 0; i < hiddenWorldRenderers.Count; i++)
-            {
-                var r = hiddenWorldRenderers[i];
-                if (r != null) r.enabled = true;
-            }
-            hiddenWorldRenderers.Clear();
-
-            for (var i = 0; i < hiddenTerrains.Count; i++)
-            {
-                var state = hiddenTerrains[i];
-                if (state.terrain == null) continue;
-                state.terrain.drawHeightmap = state.drawHeightmap;
-                state.terrain.drawTreesAndFoliage = state.drawTreesAndFoliage;
-            }
-            hiddenTerrains.Clear();
-
-            ApplyHelicopterLoadingShowcase(false);
-        }
-    }
-
-    private Transform ResolveHelicopterRoot()
-    {
-        if (helicopterFlight != null) return helicopterFlight.transform;
-        if (helicopterCapacity != null) return helicopterCapacity.transform;
-        if (crashHandler != null) return crashHandler.transform;
-        return null;
-    }
-
-    private void ApplyHelicopterLoadingShowcase(bool enabled)
-    {
-        if (!loadingShowsHelicopterAndSkyOnly) return;
-        var root = ResolveHelicopterRoot();
-        if (root == null) return;
-
-        if (enabled)
-        {
-            if (loadingShowcaseApplied) return;
-            cachedHelicopterRoot = root;
-            cachedHelicopterPosition = root.position;
-            cachedHelicopterRotation = root.rotation;
-            cachedHelicopterBody = root.GetComponent<Rigidbody>();
-            if (cachedHelicopterBody != null)
-            {
-                cachedHelicopterLinearVelocity = cachedHelicopterBody.linearVelocity;
-                cachedHelicopterAngularVelocity = cachedHelicopterBody.angularVelocity;
-                cachedHelicopterKinematic = cachedHelicopterBody.isKinematic;
-                cachedHelicopterDetectCollisions = cachedHelicopterBody.detectCollisions;
-                cachedHelicopterConstraints = cachedHelicopterBody.constraints;
-                cachedHelicopterBody.linearVelocity = Vector3.zero;
-                cachedHelicopterBody.angularVelocity = Vector3.zero;
-                cachedHelicopterBody.isKinematic = true;
-                cachedHelicopterBody.detectCollisions = false;
-                cachedHelicopterBody.constraints = RigidbodyConstraints.FreezeAll;
-            }
-
-            var euler = root.rotation.eulerAngles;
-            root.rotation = Quaternion.Euler(0f, euler.y, 0f);
-            root.position = new Vector3(root.position.x, loadingShowcaseHeight, root.position.z);
-            loadingShowcaseApplied = true;
-            return;
-        }
-
-        if (!loadingShowcaseApplied) return;
-        if (cachedHelicopterRoot != null)
-        {
-            cachedHelicopterRoot.position = cachedHelicopterPosition;
-            cachedHelicopterRoot.rotation = cachedHelicopterRotation;
-        }
-
-        if (cachedHelicopterBody != null)
-        {
-            cachedHelicopterBody.isKinematic = cachedHelicopterKinematic;
-            cachedHelicopterBody.detectCollisions = cachedHelicopterDetectCollisions;
-            cachedHelicopterBody.constraints = cachedHelicopterConstraints;
-            cachedHelicopterBody.linearVelocity = cachedHelicopterLinearVelocity;
-            cachedHelicopterBody.angularVelocity = cachedHelicopterAngularVelocity;
-        }
-
-        cachedHelicopterRoot = null;
-        cachedHelicopterBody = null;
-        loadingShowcaseApplied = false;
-    }
-
-    private struct TerrainVisibilityState
-    {
-        public Terrain terrain;
-        public bool drawHeightmap;
-        public bool drawTreesAndFoliage;
     }
 }
 
