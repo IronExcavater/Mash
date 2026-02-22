@@ -16,6 +16,8 @@ public class SoldierSpawnManager : MonoBehaviour
     [ConditionalField("autoAssignReferences", false)]
     [SerializeField] private Terrain terrain;
     [ConditionalField("autoAssignReferences", false)]
+    [SerializeField] private TerrainGenerator terrainGenerator;
+    [ConditionalField("autoAssignReferences", false)]
     [SerializeField] private MapBounds mapBounds;
     [ConditionalField("autoAssignReferences", false)]
     [SerializeField] private MilitaryBaseGenerator militaryBase;
@@ -30,6 +32,7 @@ public class SoldierSpawnManager : MonoBehaviour
 
     [Header("Spawn")]
     [SerializeField] private bool spawnOnStart = true;
+    [SerializeField] private bool waitForTerrainGeneration = true;
     [SerializeField, Min(1)] private int soldierCount = 20;
     [SerializeField, Min(0.5f)] private float spawnedSoldierScale = 2f;
 
@@ -57,13 +60,28 @@ public class SoldierSpawnManager : MonoBehaviour
 
     private readonly List<SoldierAgent> spawnedSoldiers = new List<SoldierAgent>();
     private readonly List<Transform> treeTransforms = new List<Transform>();
+    private bool subscribedToTerrainEvents;
 
     public IReadOnlyList<SoldierAgent> SpawnedSoldiers => spawnedSoldiers;
 
     private void Start()
     {
         AutoResolveReferences();
-        if (spawnOnStart) SpawnSoldiers();
+        if (!spawnOnStart) return;
+        SpawnWhenReady();
+    }
+
+    private void OnEnable()
+    {
+        if (!spawnOnStart || !waitForTerrainGeneration) return;
+        AutoResolveReferences();
+        if (terrainGenerator != null && terrainGenerator.IsGenerating)
+            SubscribeTerrainEvents();
+    }
+
+    private void OnDisable()
+    {
+        UnsubscribeTerrainEvents();
     }
 
     [ContextMenu("Spawn Soldiers")]
@@ -88,17 +106,18 @@ public class SoldierSpawnManager : MonoBehaviour
 
         var requestedCount = Mathf.Max(1, soldierCount);
         var spawnPositions = BuildDeterministicSpawnPositions(requestedCount);
+        var prefabAnimator = marinePrefab.GetComponentInChildren<Animator>(true);
         for (var i = 0; i < spawnPositions.Count; i++)
         {
             var spawnPosition = spawnPositions[i];
             var instance = Instantiate(marinePrefab, spawnPosition, Quaternion.identity, soldierParent);
             instance.name = $"Marine_{i + 1:00}";
             instance.transform.localScale *= spawnedSoldierScale;
+            SnapInstanceToGround(instance);
 
             var soldier = instance.GetComponent<SoldierAgent>();
             if (soldier == null) soldier = instance.AddComponent<SoldierAgent>();
-            if (configureSoldierAnimationOnSpawn && (soldierAnimatorController != null || soldierAvatar != null))
-                soldier.ConfigureAnimation(soldierAnimatorController, soldierAvatar);
+            ConfigureSpawnedSoldierAnimation(soldier, instance, prefabAnimator);
             if (helicopterCapacity != null) soldier.AssignHelicopter(helicopterCapacity);
             spawnedSoldiers.Add(soldier);
         }
@@ -128,15 +147,48 @@ public class SoldierSpawnManager : MonoBehaviour
         helipadZone ??= FindFirstObjectByType<HelipadZone>();
         helicopterCapacity ??= FindFirstObjectByType<HelicopterCapacity>();
         terrain ??= FindFirstObjectByType<Terrain>();
+        terrainGenerator ??= FindFirstObjectByType<TerrainGenerator>();
         mapBounds ??= FindFirstObjectByType<MapBounds>();
         militaryBase ??= FindFirstObjectByType<MilitaryBaseGenerator>();
+    }
+
+    private void SubscribeTerrainEvents()
+    {
+        if (subscribedToTerrainEvents) return;
+        if (terrainGenerator == null) return;
+
+        terrainGenerator.GenerationCompleted += HandleTerrainGenerationCompleted;
+        terrainGenerator.GenerationFailed += HandleTerrainGenerationFailed;
+        subscribedToTerrainEvents = true;
+    }
+
+    private void UnsubscribeTerrainEvents()
+    {
+        if (!subscribedToTerrainEvents) return;
+        if (terrainGenerator != null)
+        {
+            terrainGenerator.GenerationCompleted -= HandleTerrainGenerationCompleted;
+            terrainGenerator.GenerationFailed -= HandleTerrainGenerationFailed;
+        }
+        subscribedToTerrainEvents = false;
+    }
+
+    private void HandleTerrainGenerationCompleted()
+    {
+        UnsubscribeTerrainEvents();
+        SpawnWhenReady();
+    }
+
+    private void HandleTerrainGenerationFailed(string _)
+    {
+        UnsubscribeTerrainEvents();
+        SpawnWhenReady();
     }
 
     private void CacheTreeTransforms()
     {
         treeTransforms.Clear();
         var trees = GameObject.FindGameObjectsWithTag(treeTag);
-        if (trees == null) return;
         for (var i = 0; i < trees.Length; i++)
             if (trees[i] != null) treeTransforms.Add(trees[i].transform);
     }
@@ -160,16 +212,16 @@ public class SoldierSpawnManager : MonoBehaviour
         {
             var minTreeSqr = minTree * minTree;
             var minSoldierSqr = minSoldier * minSoldier;
+            if (candidates.Count == 0) break;
+
+            // Deterministic distribution pass with low CPU cost.
+            var stride = Mathf.Max(1, candidates.Count / Mathf.Max(1, required));
+            var offset = (relaxStep * 17) % candidates.Count;
             for (var i = 0; i < candidates.Count && result.Count < required; i++)
             {
-                var candidate = candidates[i];
-                if (mapBounds != null && !mapBounds.IsWithinSoftBounds(candidate, mapBoundsInset)) continue;
-                if (!IsOutsideMilitaryBase(candidate)) continue;
-                candidate.y = SampleGroundY(candidate) + heightOffset;
-
-                if (!IsAwayFromTrees(candidate, minTreeSqr)) continue;
-                if (!IsAwayFromPoints(candidate, result, minSoldierSqr)) continue;
-                result.Add(candidate);
+                var index = (offset + i * stride) % candidates.Count;
+                if (TryAcceptCandidate(candidates[index], result, minTreeSqr, minSoldierSqr, out var accepted))
+                    result.Add(accepted);
             }
 
             minTree *= 0.8f;
@@ -178,30 +230,21 @@ public class SoldierSpawnManager : MonoBehaviour
 
         if (result.Count >= required) return result;
 
-        // Deterministic greedy fill: keep widest spacing possible when constraints are tight.
+        // Fast fallback fill when strict spacing cannot satisfy requested count.
         while (result.Count < required)
         {
-            var bestIndex = -1;
-            var bestScore = float.NegativeInfinity;
+            var chosenIndex = -1;
+            var chosen = Vector3.zero;
             for (var i = 0; i < candidates.Count; i++)
             {
-                var candidate = candidates[i];
-                if (mapBounds != null && !mapBounds.IsWithinSoftBounds(candidate, mapBoundsInset)) continue;
-                if (!IsOutsideMilitaryBase(candidate)) continue;
-                candidate.y = SampleGroundY(candidate) + heightOffset;
-                if (!IsAwayFromPoints(candidate, result, 0.25f)) continue;
-
-                var score = ScoreCandidate(candidate, result);
-                if (score <= bestScore) continue;
-                bestScore = score;
-                bestIndex = i;
+                if (!TryAcceptCandidate(candidates[i], result, 0f, 0.25f, out chosen)) continue;
+                chosenIndex = i;
+                break;
             }
 
-            if (bestIndex < 0) break;
-            var chosen = candidates[bestIndex];
-            chosen.y = SampleGroundY(chosen) + heightOffset;
+            if (chosenIndex < 0) break;
             result.Add(chosen);
-            candidates.RemoveAt(bestIndex);
+            candidates.RemoveAt(chosenIndex);
         }
 
         return result;
@@ -248,9 +291,101 @@ public class SoldierSpawnManager : MonoBehaviour
 
     private float SampleGroundY(Vector3 worldPoint)
     {
+        terrain ??= Terrain.activeTerrain;
+        terrain ??= FindFirstObjectByType<Terrain>();
         if (terrain != null)
             return terrain.SampleHeight(worldPoint) + terrain.transform.position.y;
+
+        if (Physics.Raycast(worldPoint + Vector3.up * 1000f, Vector3.down, out var hit, 2000f, ~0, QueryTriggerInteraction.Ignore))
+            return hit.point.y;
+
         return worldPoint.y;
+    }
+
+    private void ConfigureSpawnedSoldierAnimation(SoldierAgent soldier, GameObject instance, Animator prefabAnimator)
+    {
+        if (!configureSoldierAnimationOnSpawn) return;
+        if (soldier == null || instance == null) return;
+
+        RuntimeAnimatorController controller = soldierAnimatorController;
+        Avatar avatar = soldierAvatar;
+        var instanceAnimator = instance.GetComponentInChildren<Animator>(true);
+
+        controller ??= prefabAnimator != null ? prefabAnimator.runtimeAnimatorController : null;
+        avatar ??= prefabAnimator != null ? prefabAnimator.avatar : null;
+
+        if (controller == null && avatar == null && instanceAnimator == null) return;
+
+        soldier.ConfigureAnimation(controller, avatar);
+        if (instanceAnimator == null) return;
+
+        instanceAnimator.Rebind();
+        instanceAnimator.Update(0f);
+    }
+
+    private void SpawnWhenReady()
+    {
+        if (waitForTerrainGeneration && terrainGenerator != null && terrainGenerator.IsGenerating)
+        {
+            SubscribeTerrainEvents();
+            return;
+        }
+
+        SpawnSoldiers();
+    }
+
+    private void SnapInstanceToGround(GameObject instance)
+    {
+        if (instance == null) return;
+
+        var position = instance.transform.position;
+        var targetGroundY = SampleGroundY(position) + heightOffset;
+        var lowestY = FindLowestPointY(instance);
+        if (float.IsInfinity(lowestY) || float.IsNaN(lowestY))
+            lowestY = position.y;
+
+        var shiftY = targetGroundY - lowestY;
+        if (Mathf.Abs(shiftY) < 0.0001f) return;
+        instance.transform.position = position + Vector3.up * shiftY;
+    }
+
+    private static float FindLowestPointY(GameObject instance)
+    {
+        var lowestY = float.PositiveInfinity;
+
+        var renderers = instance.GetComponentsInChildren<Renderer>(true);
+        for (var i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null) continue;
+            lowestY = Mathf.Min(lowestY, renderer.bounds.min.y);
+        }
+
+        var colliders = instance.GetComponentsInChildren<Collider>(true);
+        for (var i = 0; i < colliders.Length; i++)
+        {
+            var collider = colliders[i];
+            if (collider == null) continue;
+            lowestY = Mathf.Min(lowestY, collider.bounds.min.y);
+        }
+
+        return lowestY;
+    }
+
+    private bool TryAcceptCandidate(Vector3 candidate, List<Vector3> existing, float minTreeSqr, float minSoldierSqr, out Vector3 accepted)
+    {
+        accepted = candidate;
+        if (mapBounds != null && !mapBounds.IsWithinSoftBounds(candidate, mapBoundsInset))
+            return false;
+        if (!IsOutsideMilitaryBase(candidate))
+            return false;
+
+        accepted.y = SampleGroundY(candidate) + heightOffset;
+        if (minTreeSqr > 0f && !IsAwayFromTrees(accepted, minTreeSqr))
+            return false;
+        if (minSoldierSqr > 0f && !IsAwayFromPoints(accepted, existing, minSoldierSqr))
+            return false;
+        return true;
     }
 
     private bool IsAwayFromTrees(Vector3 candidate, float minTreeDistSqr)
@@ -277,34 +412,6 @@ public class SoldierSpawnManager : MonoBehaviour
         }
 
         return true;
-    }
-
-    private float ScoreCandidate(Vector3 candidate, List<Vector3> selected)
-    {
-        var minSelectedDistance = float.PositiveInfinity;
-        for (var i = 0; i < selected.Count; i++)
-        {
-            var delta = selected[i] - candidate;
-            delta.y = 0f;
-            var d = delta.magnitude;
-            if (d < minSelectedDistance) minSelectedDistance = d;
-        }
-
-        var minTreeDistanceValue = float.PositiveInfinity;
-        for (var i = 0; i < treeTransforms.Count; i++)
-        {
-            var tree = treeTransforms[i];
-            if (tree == null) continue;
-            var delta = tree.position - candidate;
-            delta.y = 0f;
-            var d = delta.magnitude;
-            if (d < minTreeDistanceValue) minTreeDistanceValue = d;
-        }
-
-        if (float.IsPositiveInfinity(minSelectedDistance)) minSelectedDistance = 1000f;
-        if (float.IsPositiveInfinity(minTreeDistanceValue)) minTreeDistanceValue = 1000f;
-
-        return minSelectedDistance * 1.0f + minTreeDistanceValue * 0.35f;
     }
 
     private bool IsOutsideMilitaryBase(Vector3 candidate)

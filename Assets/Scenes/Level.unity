@@ -2982,7 +2982,7 @@ MonoBehaviour:
   soldierAnimatorController: {fileID: 9100000, guid: 6f224c7d4b6fca34dabe8e2d0218962e, type: 2}
   soldierAvatar: {fileID: 9000000, guid: 02b26045da3124c4ab28ffc9667d4b2f, type: 3}
   spawnOnStart: 1
-  soldierCount: 10
+  soldierCount: 20
   spawnedSoldierScale: 2
   spawnAcrossMapBounds: 1
   minSpawnRadius: 26
@@ -3041,7 +3041,7 @@ MonoBehaviour:
   autoEnableActions: 1
   startInMainMenu: 1
   autoSpawnSoldiersOnPlay: 1
-  requiredSoldierCount: 6
+  requiredSoldierCount: 10
   missionCompleteDelaySeconds: 1
   pauseFadeDuration: 0.22
   resumeFadeDuration: 0.14
@@ -3083,8 +3083,8 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 0ca8de8c1f2600949a8ba7e957554be7, type: 3}
   capacityFullRadioClips:
   - {fileID: 8300000, guid: 469b50b732fd0b142b31eae6e9aa15a1, type: 3}
-  voiceVolume: 0.95
-  radioInVolume: 0.9
+  voiceVolume: 0.5
+  radioInVolume: 0.5
   commsMasterVolume: 0.6
   delayAfterRadioInSeconds: 0.07
 --- !u!114 &1830446125
