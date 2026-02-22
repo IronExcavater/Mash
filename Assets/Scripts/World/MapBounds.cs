@@ -81,7 +81,8 @@ public class MapBounds : MonoBehaviour
 
     private void FixedUpdate()
     {
-        ResolveReferences();
+        if (helicopterBody == null && autoAssignReferences)
+            ResolveReferences();
         if (helicopterBody == null) return;
         if (helicopterCrash != null && (helicopterCrash.IsCrashing || helicopterCrash.IsCrashComplete))
             return;
@@ -163,7 +164,8 @@ public class MapBounds : MonoBehaviour
     private void Update()
     {
         if (Application.isPlaying) return;
-        ResolveReferences();
+        if (autoAssignReferences && (baseGenerator == null || helicopterBody == null || forcefieldVisual == null))
+            ResolveReferences();
         if (manageVisualsOnThisComponent) UpdateVisual();
     }
 

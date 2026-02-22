@@ -54,11 +54,6 @@ public class TerrainBiomeProfile : ScriptableObject
     public TerrainLayer accentLayer;
     public TerrainLayer detailLayer;
     [Min(0.01f)] public Vector2 tileSize = new Vector2(30f, 30f);
-    public Color fallbackBaseColor = new Color(0.80f, 0.70f, 0.45f, 1f);
-    public Color fallbackMidColor = new Color(0.63f, 0.56f, 0.38f, 1f);
-    public Color fallbackSteepColor = new Color(0.45f, 0.41f, 0.34f, 1f);
-    public Color fallbackAccentColor = new Color(0.53f, 0.49f, 0.38f, 1f);
-    public Color fallbackDetailColor = new Color(0.34f, 0.32f, 0.29f, 1f);
 
     [Header("Texture Blending")]
     [Range(16, 2048)] public int alphamapResolution = 512;

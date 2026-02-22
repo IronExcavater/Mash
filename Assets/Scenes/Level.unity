@@ -2977,7 +2977,6 @@ MonoBehaviour:
   configureSoldierAnimationOnSpawn: 1
   soldierAnimatorController: {fileID: 9100000, guid: 6f224c7d4b6fca34dabe8e2d0218962e, type: 2}
   soldierAvatar: {fileID: 9000000, guid: 02b26045da3124c4ab28ffc9667d4b2f, type: 3}
-  addOutlineEffect: 1
   spawnOnStart: 1
   soldierCount: 10
   spawnedSoldierScale: 2
