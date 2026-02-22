@@ -28,8 +28,7 @@ public class MashGameUIController : MonoBehaviour
     [ConditionalField("autoAssignReferences", false)]
     [SerializeField] private HelicopterFlightController helicopterFlight;
 
-    [Header("Roots")]
-    [ConditionalField("autoAssignUiBindings", false)]
+    [ConditionalField("autoAssignUiBindings", false, "Roots")]
     [SerializeField] private CanvasGroup mainMenuRoot;
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private CanvasGroup mainMenuContentRoot;
@@ -44,8 +43,7 @@ public class MashGameUIController : MonoBehaviour
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private CanvasGroup loadingRoot;
 
-    [Header("Buttons")]
-    [ConditionalField("autoAssignUiBindings", false)]
+    [ConditionalField("autoAssignUiBindings", false, "Buttons")]
     [SerializeField] private Button startButton;
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private Button resumeButton;
@@ -64,8 +62,7 @@ public class MashGameUIController : MonoBehaviour
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private Button crashQuitButton;
 
-    [Header("HUD Text")]
-    [ConditionalField("autoAssignUiBindings", false)]
+    [ConditionalField("autoAssignUiBindings", false, "HUD Text")]
     [SerializeField] private TMP_Text inHelicopterText;
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private TMP_Text rescuedText;
@@ -74,7 +71,7 @@ public class MashGameUIController : MonoBehaviour
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private TMP_Text missionStateText;
     [ConditionalField("autoAssignUiBindings", false)]
-    [SerializeField] private HelipadOffscreenArrow helipadIndicator;
+    [SerializeField] private OffScreenIndicator helipadIndicator;
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private TMP_Text mainMenuTitleText;
     [ConditionalField("autoAssignUiBindings", false)]
@@ -101,7 +98,7 @@ public class MashGameUIController : MonoBehaviour
     [SerializeField] private bool loadingShowsHelicopterAndSkyOnly = true;
     [ConditionalField("loadingShowsHelicopterAndSkyOnly", true)]
     [SerializeField, Min(5f)] private float loadingShowcaseHeight = 12f;
-    [SerializeField, Min(0f)] private float crashMenuDelaySeconds = 3.4f;
+    [SerializeField, Min(0f)] private float crashMenuDelaySeconds = 5.25f;
 
     private bool listenersBound;
     private bool settingsOpen;
@@ -111,8 +108,8 @@ public class MashGameUIController : MonoBehaviour
     private bool terrainEventsSubscribed;
     private readonly List<Renderer> hiddenWorldRenderers = new List<Renderer>();
     private readonly List<TerrainVisibilityState> hiddenTerrains = new List<TerrainVisibilityState>();
-    private bool waitingCrashMenuDelay;
-    private float crashDetectedAtUnscaledTime;
+    private bool waitingOutcomeMenuDelay;
+    private float outcomeDetectedAtUnscaledTime;
     private readonly Dictionary<CanvasGroup, Coroutine> fadeRoutines = new Dictionary<CanvasGroup, Coroutine>();
     private readonly Dictionary<CanvasGroup, bool> panelVisibilityTargets = new Dictionary<CanvasGroup, bool>();
     private bool loadingShowcaseApplied;
@@ -125,13 +122,14 @@ public class MashGameUIController : MonoBehaviour
     private RigidbodyConstraints cachedHelicopterConstraints;
     private Rigidbody cachedHelicopterBody;
     private Transform cachedHelicopterRoot;
+    private bool offscreenTemplateSanitized;
 
     private void Awake()
     {
-        if (crashMenuDelaySeconds < 3f) crashMenuDelaySeconds = 3.4f;
+        if (crashMenuDelaySeconds < 0f) crashMenuDelaySeconds = 0f;
         ResolveReferences();
         BindButtonListeners();
-        RefreshUI(true);
+        RefreshUI(false);
     }
 
     private void OnEnable()
@@ -139,7 +137,7 @@ public class MashGameUIController : MonoBehaviour
         ResolveReferences();
         BindButtonListeners();
         BindTerrainEvents();
-        RefreshUI(true);
+        RefreshUI(false);
     }
 
     private void Update()
@@ -151,44 +149,45 @@ public class MashGameUIController : MonoBehaviour
     private void ResolveReferences()
     {
         if (!autoAssignReferences) return;
-        if (gameFlow == null) gameFlow = FindFirstObjectByType<GameFlowController>();
-        if (helicopterCapacity == null) helicopterCapacity = FindFirstObjectByType<HelicopterCapacity>();
-        if (helipadZone == null) helipadZone = FindFirstObjectByType<HelipadZone>();
-        if (crashHandler == null) crashHandler = FindFirstObjectByType<HelicopterCollisionHandler>();
-        if (soldierSpawner == null) soldierSpawner = FindFirstObjectByType<SoldierSpawnManager>();
-        if (terrainGenerator == null) terrainGenerator = FindFirstObjectByType<TerrainGenerator>();
-        if (helicopterFlight == null) helicopterFlight = FindFirstObjectByType<HelicopterFlightController>();
+        gameFlow ??= FindFirstObjectByType<GameFlowController>();
+        helicopterCapacity ??= FindFirstObjectByType<HelicopterCapacity>();
+        helipadZone ??= FindFirstObjectByType<HelipadZone>();
+        crashHandler ??= FindFirstObjectByType<HelicopterCollisionHandler>();
+        soldierSpawner ??= FindFirstObjectByType<SoldierSpawnManager>();
+        terrainGenerator ??= FindFirstObjectByType<TerrainGenerator>();
+        helicopterFlight ??= FindFirstObjectByType<HelicopterFlightController>();
         if (!autoAssignUiBindings) return;
 
-        if (mainMenuRoot == null) mainMenuRoot = FindCanvasGroupByName("MainMenuPanel");
-        if (mainMenuContentRoot == null) mainMenuContentRoot = FindCanvasGroupByName("MainMenuContent");
-        if (pauseMenuRoot == null) pauseMenuRoot = FindCanvasGroupByName("PauseMenuPanel");
-        if (hudRoot == null) hudRoot = FindCanvasGroupByName("HUDPanel");
-        if (crashRoot == null) crashRoot = FindCanvasGroupByName("CrashOverlayPanel");
-        if (settingsRoot == null) settingsRoot = FindCanvasGroupByName("SettingsPanel");
-        if (loadingRoot == null) loadingRoot = FindCanvasGroupByName("LoadingOverlayPanel");
+        AutoAssign(ref mainMenuRoot, "MainMenuPanel");
+        AutoAssign(ref mainMenuContentRoot, "MainMenuContent");
+        AutoAssign(ref pauseMenuRoot, "PauseMenuPanel");
+        AutoAssign(ref hudRoot, "HUDPanel");
+        AutoAssign(ref crashRoot, "CrashOverlayPanel");
+        AutoAssign(ref settingsRoot, "SettingsPanel");
+        AutoAssign(ref loadingRoot, "LoadingOverlayPanel");
 
-        if (startButton == null) startButton = FindEvoButtonByName("StartMissionButton");
-        if (resumeButton == null) resumeButton = FindEvoButtonByName("ResumeGameButton");
-        if (restartButton == null) restartButton = FindEvoButtonByName("RestartGameButton");
-        if (settingsButton == null) settingsButton = FindEvoButtonByName("SettingsButton");
-        if (settingsBackButton == null) settingsBackButton = FindEvoButtonByName("SettingsBackButton");
-        if (quitButton == null) quitButton = FindEvoButtonByName("MainMenuQuitButton");
-        if (pauseQuitButton == null) pauseQuitButton = FindEvoButtonByName("PauseMenuQuitButton");
-        if (crashRestartButton == null) crashRestartButton = FindEvoButtonByName("CrashRestartButton");
-        if (crashQuitButton == null) crashQuitButton = FindEvoButtonByName("CrashQuitButton");
+        AutoAssign(ref startButton, "StartMissionButton");
+        AutoAssign(ref resumeButton, "ResumeGameButton");
+        AutoAssign(ref restartButton, "RestartGameButton");
+        AutoAssign(ref settingsButton, "SettingsButton");
+        AutoAssign(ref settingsBackButton, "SettingsBackButton");
+        AutoAssign(ref quitButton, "MainMenuQuitButton");
+        AutoAssign(ref pauseQuitButton, "PauseMenuQuitButton");
+        AutoAssign(ref crashRestartButton, "CrashRestartButton");
+        AutoAssign(ref crashQuitButton, "CrashQuitButton");
 
-        if (inHelicopterText == null) inHelicopterText = FindTextByName("HelicopterCapacityRow/ValueLabel");
-        if (rescuedText == null) rescuedText = FindTextByName("RescuedSoldiersRow/ValueLabel");
-        if (missionPhaseText == null) missionPhaseText = FindTextByName("WaitingSoldiersRow/ValueLabel");
-        if (missionStateText == null) missionStateText = FindTextByName("MissionStateLabel");
-        if (helipadIndicator == null) helipadIndicator = FindOffscreenArrowByName("HelipadOffscreenIndicator");
-        if (mainMenuTitleText == null) mainMenuTitleText = FindTextByName("MainMenuTitleLabel");
-        if (mainMenuSubtitleText == null) mainMenuSubtitleText = FindTextByName("MainMenuSubtitleLabel");
-        if (displayFullscreenToggle == null) displayFullscreenToggle = FindToggleByName("DisplayFullscreenToggle");
-        if (displayModeDropdown == null) displayModeDropdown = FindDropdownByName("DisplayModeDropdown");
-        if (soundMasterVolumeSlider == null) soundMasterVolumeSlider = FindSliderByName("SoundMasterVolumeSlider");
-        if (gameplayControlModeDropdown == null) gameplayControlModeDropdown = FindDropdownByName("GameplayControlModeDropdown");
+        inHelicopterText ??= FindTextByName("HelicopterCapacityRow/ValueLabel");
+        rescuedText ??= FindTextByName("RescuedSoldiersRow/ValueLabel");
+        missionPhaseText ??= FindTextByName("WaitingSoldiersRow/ValueLabel");
+        missionStateText ??= FindTextByName("MissionStateLabel");
+        AutoAssign(ref helipadIndicator, "HelipadOffscreenIndicator");
+        EnsureOnlyRuntimeOffscreenIndicatorIsVisible();
+        mainMenuTitleText ??= FindTextByName("MainMenuTitleLabel");
+        mainMenuSubtitleText ??= FindTextByName("MainMenuSubtitleLabel");
+        AutoAssign(ref displayFullscreenToggle, "DisplayFullscreenToggle");
+        AutoAssign(ref displayModeDropdown, "DisplayModeDropdown");
+        AutoAssign(ref soundMasterVolumeSlider, "SoundMasterVolumeSlider");
+        AutoAssign(ref gameplayControlModeDropdown, "GameplayControlModeDropdown");
     }
 
     private void BindButtonListeners()
@@ -237,65 +236,50 @@ public class MashGameUIController : MonoBehaviour
     private void RefreshUI(bool force)
     {
         ResolveReferences();
-        var hasGameFlow = gameFlow != null;
-        var state = hasGameFlow ? gameFlow.State : GameFlowController.SessionState.Playing;
+        var state = gameFlow?.State ?? GameFlowController.SessionState.Playing;
         var showCrashRaw = crashHandler != null && (crashHandler.IsCrashing || crashHandler.IsCrashComplete);
-        if (showCrashRaw)
+        var showMissionCompleteRaw = state == GameFlowController.SessionState.MissionComplete;
+        var showOutcomeRaw = showCrashRaw || showMissionCompleteRaw;
+        if (showOutcomeRaw)
         {
-            if (!waitingCrashMenuDelay)
+            if (!waitingOutcomeMenuDelay)
             {
-                waitingCrashMenuDelay = true;
-                crashDetectedAtUnscaledTime = Time.unscaledTime;
+                waitingOutcomeMenuDelay = true;
+                outcomeDetectedAtUnscaledTime = Time.unscaledTime;
             }
         }
         else
         {
-            waitingCrashMenuDelay = false;
-            crashDetectedAtUnscaledTime = 0f;
+            waitingOutcomeMenuDelay = false;
+            outcomeDetectedAtUnscaledTime = 0f;
         }
 
-        var crashDelayElapsed = !showCrashRaw || (Time.unscaledTime - crashDetectedAtUnscaledTime) >= Mathf.Max(0f, crashMenuDelaySeconds);
-        var showCrash = showCrashRaw && crashDelayElapsed;
+        var outcomeDelayElapsed = !showOutcomeRaw || (Time.unscaledTime - outcomeDetectedAtUnscaledTime) >= crashMenuDelaySeconds;
+        var showCrash = showCrashRaw && outcomeDelayElapsed;
+        var showMissionComplete = showMissionCompleteRaw && outcomeDelayElapsed;
         var showMenu = state == GameFlowController.SessionState.MainMenu ||
                        state == GameFlowController.SessionState.Paused ||
-                       state == GameFlowController.SessionState.MissionComplete ||
+                       showMissionComplete ||
                        showCrash;
         var showPause = state == GameFlowController.SessionState.Paused;
         var showHUD = state == GameFlowController.SessionState.Playing;
         var showLoading = hideTerrainLoadingWithFade && isLoadingTerrain;
         var lockHelicopter = showMenu || showLoading;
 
-        if (!hasGameFlow)
-        {
-            if (showCrash) SetCanvasGroup(crashRoot, true);
-        }
-        else if (force)
-        {
-            SetCanvasGroup(mainMenuRoot, showMenu);
-            SetCanvasGroup(pauseMenuRoot, false);
-            SetCanvasGroup(hudRoot, showHUD && !showMenu);
-            SetCanvasGroup(crashRoot, false);
-            SetCanvasGroup(settingsRoot, showMenu && settingsOpen);
-            SetCanvasGroup(mainMenuContentRoot, showMenu && !settingsOpen);
-            SetCanvasGroup(loadingRoot, showLoading);
-        }
-        else
-        {
-            SetCanvasGroupFaded(mainMenuRoot, showMenu);
-            SetCanvasGroupFaded(pauseMenuRoot, false);
-            SetCanvasGroupFaded(hudRoot, showHUD && !showMenu);
-            SetCanvasGroupFaded(crashRoot, false);
-            SetCanvasGroupFaded(settingsRoot, showMenu && settingsOpen);
-            SetCanvasGroupFaded(mainMenuContentRoot, showMenu && !settingsOpen);
-            SetCanvasGroupFaded(loadingRoot, showLoading);
-        }
+        ApplyPanelVisibility(force, mainMenuRoot, showMenu);
+        ApplyPanelVisibility(force, pauseMenuRoot, false);
+        ApplyPanelVisibility(force, hudRoot, showHUD && !showMenu);
+        ApplyPanelVisibility(force, crashRoot, false);
+        ApplyPanelVisibility(force, settingsRoot, showMenu && settingsOpen);
+        ApplyPanelVisibility(force, mainMenuContentRoot, showMenu && !settingsOpen);
+        ApplyPanelVisibility(force, loadingRoot, showLoading);
 
-        var boarded = helicopterCapacity != null ? helicopterCapacity.BoardedCount : 0;
-        var maxSeats = helicopterCapacity != null ? helicopterCapacity.MaxSeats : 0;
-        var rescued = helicopterCapacity != null ? helicopterCapacity.TotalRescuedCount : 0;
-        var required = gameFlow != null ? gameFlow.RequiredSoldierCount : Mathf.Max(1, rescued);
+        var boarded = helicopterCapacity?.BoardedCount ?? 0;
+        var maxSeats = helicopterCapacity?.MaxSeats ?? 0;
+        var rescued = helicopterCapacity?.TotalRescuedCount ?? 0;
+        var required = gameFlow?.RequiredSoldierCount ?? Mathf.Max(1, rescued);
         var notRescued = Mathf.Max(0, required - rescued);
-        var phase = gameFlow != null ? gameFlow.Phase.ToString() : "Unknown";
+        var phase = gameFlow?.Phase.ToString() ?? "Unknown";
         var stateText = state.ToString();
 
         if (crashHandler != null && (crashHandler.IsCrashing || crashHandler.IsCrashComplete))
@@ -317,7 +301,7 @@ public class MashGameUIController : MonoBehaviour
         }
 
         if (helipadIndicator != null)
-            ConfigureHelipadIndicator(showHUD && !showMenu);
+            UpdateHelipadIndicatorVisibility(showHUD && !showMenu);
 
         if (helicopterFlight != null)
             helicopterFlight.SetControlLock(lockHelicopter);
@@ -344,6 +328,12 @@ public class MashGameUIController : MonoBehaviour
         group.interactable = visible;
         group.blocksRaycasts = visible;
         if (group.gameObject.activeSelf != visible) group.gameObject.SetActive(visible);
+    }
+
+    private void ApplyPanelVisibility(bool immediate, CanvasGroup group, bool visible)
+    {
+        if (immediate) SetCanvasGroup(group, visible);
+        else SetCanvasGroupFaded(group, visible);
     }
 
     private void SetCanvasGroupFaded(CanvasGroup group, bool visible)
@@ -401,11 +391,7 @@ public class MashGameUIController : MonoBehaviour
         {
             if (kv.Value != null) StopCoroutine(kv.Value);
         }
-        if (loadingHideRoutine != null)
-        {
-            StopCoroutine(loadingHideRoutine);
-            loadingHideRoutine = null;
-        }
+        StopLoadingHideRoutine();
         fadeRoutines.Clear();
         panelVisibilityTargets.Clear();
     }
@@ -455,58 +441,27 @@ public class MashGameUIController : MonoBehaviour
         settingsOpen = false;
     }
 
-    private CanvasGroup FindCanvasGroupByName(string objectName)
+    private void AutoAssign<T>(ref T field, string nameOrPath) where T : Component
     {
-        var t = transform.Find(objectName);
-        if (t == null) t = FindDeepChildByName(transform, objectName);
-        return t != null ? t.GetComponent<CanvasGroup>() : null;
+        if (field != null) return;
+        field = FindByNameOrPath(nameOrPath)?.GetComponent<T>();
     }
 
-    private Button FindEvoButtonByName(string objectName)
+    private Transform FindByNameOrPath(string nameOrPath)
     {
-        var t = FindDeepChildByName(transform, objectName);
-        return t != null ? t.GetComponent<Button>() : null;
-    }
-
-    private UnityEngine.UI.Toggle FindToggleByName(string objectName)
-    {
-        var t = FindDeepChildByName(transform, objectName);
-        return t != null ? t.GetComponent<UnityEngine.UI.Toggle>() : null;
-    }
-
-    private UnityEngine.UI.Slider FindSliderByName(string objectName)
-    {
-        var t = FindDeepChildByName(transform, objectName);
-        return t != null ? t.GetComponent<UnityEngine.UI.Slider>() : null;
-    }
-
-    private TMP_Dropdown FindDropdownByName(string objectName)
-    {
-        var t = FindDeepChildByName(transform, objectName);
-        return t != null ? t.GetComponent<TMP_Dropdown>() : null;
-    }
-
-    private HelipadOffscreenArrow FindOffscreenArrowByName(string objectName)
-    {
-        var t = FindDeepChildByName(transform, objectName);
-        return t != null ? t.GetComponent<HelipadOffscreenArrow>() : null;
+        return transform.Find(nameOrPath) ?? FindDeepChildByName(transform, nameOrPath);
     }
 
     private TMP_Text FindTextByName(string pathOrName)
     {
-        var t = transform.Find(pathOrName);
-        if (t == null) t = FindDeepChildByName(transform, pathOrName);
+        var t = FindByNameOrPath(pathOrName);
         if (t == null) return null;
 
         var direct = t.GetComponent<TMP_Text>();
         if (direct != null) return direct;
 
-        var mainChild = t.Find("Main");
-        if (mainChild != null)
-        {
-            var mainText = mainChild.GetComponent<TMP_Text>();
-            if (mainText != null) return mainText;
-        }
+        var mainText = t.Find("Main")?.GetComponent<TMP_Text>();
+        if (mainText != null) return mainText;
 
         var texts = t.GetComponentsInChildren<TMP_Text>(true);
         for (var i = 0; i < texts.Length; i++)
@@ -520,28 +475,39 @@ public class MashGameUIController : MonoBehaviour
         return null;
     }
 
-    private void ConfigureHelipadIndicator(bool shouldBeVisible)
+    private void UpdateHelipadIndicatorVisibility(bool shouldBeVisible)
     {
         if (helipadIndicator == null) return;
 
-        var cam = Camera.main;
-        if (cam == null) cam = FindFirstObjectByType<Camera>();
-        var canvas = GetComponentInParent<Canvas>();
-        var canvasRect = canvas != null ? canvas.GetComponent<RectTransform>() : null;
+        var cam = Camera.main ?? FindFirstObjectByType<Camera>();
 
-        if (helipadZone == null || cam == null || canvasRect == null)
+        if (helipadZone == null || cam == null)
         {
-            if (helipadIndicator.gameObject.activeSelf)
-                helipadIndicator.gameObject.SetActive(false);
+            helipadIndicator.gameObject.SetActive(false);
             return;
         }
 
-        helipadIndicator.SetTarget(helipadZone.transform, cam, canvasRect);
+        helipadIndicator.targetTransform = helipadZone.transform;
+        helipadIndicator.targetCamera = cam;
+        helipadIndicator.trackUIElement = false;
+        helipadIndicator.hideWhenOnScreen = true;
 
-        if (!helipadIndicator.gameObject.activeSelf && shouldBeVisible)
-            helipadIndicator.gameObject.SetActive(true);
-        else if (helipadIndicator.gameObject.activeSelf != shouldBeVisible)
-            helipadIndicator.gameObject.SetActive(shouldBeVisible);
+        helipadIndicator.gameObject.SetActive(shouldBeVisible);
+    }
+
+    private void EnsureOnlyRuntimeOffscreenIndicatorIsVisible()
+    {
+        if (offscreenTemplateSanitized || helipadIndicator == null) return;
+
+        var templates = helipadIndicator.GetComponentsInChildren<OffScreenIndicatorObject>(true);
+        for (var i = 0; i < templates.Length; i++)
+        {
+            var template = templates[i];
+            if (template == null) continue;
+            template.gameObject.SetActive(false);
+        }
+
+        offscreenTemplateSanitized = true;
     }
 
     private void HandleMenuHotkeys()
@@ -550,7 +516,7 @@ public class MashGameUIController : MonoBehaviour
         if (kb == null) return;
 
         var mainShown = IsMenuVisible(mainMenuRoot);
-        var pauseShown = gameFlow != null && gameFlow.State == GameFlowController.SessionState.Paused && mainShown;
+        var pauseShown = gameFlow?.State == GameFlowController.SessionState.Paused && mainShown;
         if (!mainShown) return;
 
         if (settingsOpen)
@@ -584,7 +550,7 @@ public class MashGameUIController : MonoBehaviour
             return;
         }
 
-        if (gameFlow != null && gameFlow.State == GameFlowController.SessionState.MainMenu &&
+        if (gameFlow?.State == GameFlowController.SessionState.MainMenu &&
             (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
         {
             OnStartPressed();
@@ -665,9 +631,10 @@ public class MashGameUIController : MonoBehaviour
             "THIRD PERSON"
         });
 
-        var selected = 0;
-        if (helicopterFlight != null && helicopterFlight.CurrentControlScheme == HelicopterFlightController.ControlScheme.Complex)
-            selected = 1;
+        var selected = helicopterFlight != null &&
+                       helicopterFlight.CurrentControlScheme == HelicopterFlightController.ControlScheme.Complex
+            ? 1
+            : 0;
         gameplayControlModeDropdown.SetValueWithoutNotify(selected);
     }
 
@@ -752,7 +719,7 @@ public class MashGameUIController : MonoBehaviour
     private void BindTerrainEvents()
     {
         if (terrainEventsSubscribed) return;
-        if (terrainGenerator == null) terrainGenerator = FindFirstObjectByType<TerrainGenerator>();
+        terrainGenerator ??= FindFirstObjectByType<TerrainGenerator>();
         if (terrainGenerator == null) return;
 
         terrainGenerator.GenerationStarted += HandleTerrainGenerationStarted;
@@ -783,11 +750,7 @@ public class MashGameUIController : MonoBehaviour
         loadingShownAtUnscaledTime = Time.unscaledTime;
         if (loadingShowsHelicopterAndSkyOnly)
             ApplyLoadingWorldVisibility(true);
-        if (loadingHideRoutine != null)
-        {
-            StopCoroutine(loadingHideRoutine);
-            loadingHideRoutine = null;
-        }
+        StopLoadingHideRoutine();
         RefreshUI(false);
     }
 
@@ -804,8 +767,15 @@ public class MashGameUIController : MonoBehaviour
     private void QueueHideLoadingOverlay()
     {
         if (!hideTerrainLoadingWithFade) return;
-        if (loadingHideRoutine != null) StopCoroutine(loadingHideRoutine);
+        StopLoadingHideRoutine();
         loadingHideRoutine = StartCoroutine(HideLoadingOverlayAfterMinimum());
+    }
+
+    private void StopLoadingHideRoutine()
+    {
+        if (loadingHideRoutine == null) return;
+        StopCoroutine(loadingHideRoutine);
+        loadingHideRoutine = null;
     }
 
     private IEnumerator HideLoadingOverlayAfterMinimum()
@@ -877,19 +847,6 @@ public class MashGameUIController : MonoBehaviour
             hiddenTerrains.Clear();
 
             ApplyHelicopterLoadingShowcase(false);
-        }
-    }
-
-    private void HideRenderersUnder(GameObject root)
-    {
-        if (root == null) return;
-        var renderers = root.GetComponentsInChildren<Renderer>(true);
-        for (var i = 0; i < renderers.Length; i++)
-        {
-            var r = renderers[i];
-            if (r == null || !r.enabled) continue;
-            r.enabled = false;
-            hiddenWorldRenderers.Add(r);
         }
     }
 

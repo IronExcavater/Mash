@@ -10,7 +10,7 @@ public class ConditionalFieldDrawer : PropertyDrawer
 
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
-        if (!SafeShouldShow(property)) return 0f;
+        if (!SafeShouldShow(property)) return -EditorGUIUtility.standardVerticalSpacing;
         var height = EditorGUI.GetPropertyHeight(property, label, true);
         var data = (ConditionalFieldAttribute)attribute;
         if (string.IsNullOrWhiteSpace(data.header)) return height;

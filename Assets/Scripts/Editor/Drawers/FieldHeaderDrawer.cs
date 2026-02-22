@@ -5,13 +5,10 @@ using UnityEngine;
 [CustomPropertyDrawer(typeof(FieldHeaderAttribute))]
 public class FieldHeaderDrawer : PropertyDrawer
 {
-    private const float TopPadding = 6f;
-
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
-        if (!SafeShouldShow(property)) return 0f;
-        return TopPadding + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing +
-               EditorGUI.GetPropertyHeight(property, label, true);
+        if (!SafeShouldShow(property)) return -EditorGUIUtility.standardVerticalSpacing;
+        return EditorGUI.GetPropertyHeight(property, label, true);
     }
 
     public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
@@ -19,13 +16,8 @@ public class FieldHeaderDrawer : PropertyDrawer
         if (!SafeShouldShow(property)) return;
         var data = (FieldHeaderAttribute)attribute;
         var title = string.IsNullOrWhiteSpace(data.title) ? ObjectNames.NicifyVariableName(property.name) : data.title;
-
-        var headerRect = new Rect(position.x, position.y + TopPadding, position.width, EditorGUIUtility.singleLineHeight);
-        EditorGUI.LabelField(headerRect, title, EditorStyles.boldLabel);
-
-        var propertyY = headerRect.yMax + EditorGUIUtility.standardVerticalSpacing;
-        var propertyRect = new Rect(position.x, propertyY, position.width, EditorGUI.GetPropertyHeight(property, label, true));
-        EditorGUI.PropertyField(propertyRect, property, label, true);
+        var propertyLabel = new GUIContent(title, label.tooltip);
+        EditorGUI.PropertyField(position, property, propertyLabel, true);
     }
 
     private bool SafeShouldShow(SerializedProperty property)

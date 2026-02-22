@@ -60,19 +60,11 @@ public class MapBoundsVisualController : MonoBehaviour
 
     private void ResolveReferences()
     {
-        if (cachedRenderer == null) cachedRenderer = GetComponent<Renderer>();
-        if (cachedRenderer != null)
-            forcefieldMaterial = cachedRenderer.sharedMaterial;
-
-        if (IsRetroLitForcefield(forcefieldMaterial))
-        {
-            var fallback = ResolveForcefieldShader();
-            if (fallback != null && forcefieldMaterial.shader != fallback)
-                forcefieldMaterial.shader = fallback;
-        }
+        cachedRenderer ??= GetComponent<Renderer>();
+        forcefieldMaterial = cachedRenderer?.sharedMaterial;
 
         if (!autoAssignReferences) return;
-        if (mapBounds == null) mapBounds = FindFirstObjectByType<MapBounds>();
+        mapBounds ??= FindFirstObjectByType<MapBounds>();
         if (revealTarget == null && mapBounds != null) revealTarget = mapBounds.RevealTargetTransform;
     }
 
@@ -92,7 +84,7 @@ public class MapBoundsVisualController : MonoBehaviour
         forcefieldMaterial.color = color;
         if (forcefieldMaterial.HasProperty("_Color")) forcefieldMaterial.SetColor("_Color", color);
         if (forcefieldMaterial.HasProperty("_BaseColor")) forcefieldMaterial.SetColor("_BaseColor", color);
-        ApplyTransparentForcefieldRenderState();
+        ApplyTransparentRenderState(forcefieldMaterial);
         if (forcefieldMaterial.HasProperty("_EmissionColor"))
         {
             forcefieldMaterial.EnableKeyword("_EMISSION");
@@ -101,26 +93,7 @@ public class MapBoundsVisualController : MonoBehaviour
         }
 
         if (!forceDoubleSided) return;
-        if (forcefieldMaterial.HasProperty("_Cull")) forcefieldMaterial.SetFloat("_Cull", 0f);
-        if (forcefieldMaterial.HasProperty("_CullMode")) forcefieldMaterial.SetFloat("_CullMode", 0f);
-        if (forcefieldMaterial.HasProperty("_RenderFace")) forcefieldMaterial.SetFloat("_RenderFace", 2f);
-        if (forcefieldMaterial.HasProperty("_DoubleSidedEnable")) forcefieldMaterial.SetFloat("_DoubleSidedEnable", 1f);
-    }
-
-    private void ApplyTransparentForcefieldRenderState()
-    {
-        if (forcefieldMaterial == null) return;
-
-        if (forcefieldMaterial.HasProperty("_Surface")) forcefieldMaterial.SetFloat("_Surface", 1f);
-        if (forcefieldMaterial.HasProperty("_Blend")) forcefieldMaterial.SetFloat("_Blend", 0f);
-        if (forcefieldMaterial.HasProperty("_SrcBlend")) forcefieldMaterial.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-        if (forcefieldMaterial.HasProperty("_DstBlend")) forcefieldMaterial.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-        if (forcefieldMaterial.HasProperty("_SrcBlendAlpha")) forcefieldMaterial.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
-        if (forcefieldMaterial.HasProperty("_DstBlendAlpha")) forcefieldMaterial.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
-        if (forcefieldMaterial.HasProperty("_ZWrite")) forcefieldMaterial.SetFloat("_ZWrite", 0f);
-
-        forcefieldMaterial.SetOverrideTag("RenderType", "Transparent");
-        forcefieldMaterial.renderQueue = (int)RenderQueue.Transparent;
+        ApplyDoubleSided(forcefieldMaterial);
     }
 
     private float ComputeRevealFactor()
@@ -129,23 +102,28 @@ public class MapBoundsVisualController : MonoBehaviour
         return mapBounds.ComputeRevealFactor(revealTarget.position, revealDistanceFromBoundary);
     }
 
-    private static Shader ResolveForcefieldShader()
+    private static void ApplyTransparentRenderState(Material mat)
     {
-        var shader = Shader.Find("Ultimate 10 Plus/Force Field");
-        if (shader == null) shader = Shader.Find("Force Field");
-        if (shader == null) shader = Shader.Find("Ultimate 10 Plus Shaders/Force Field");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-        if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
-        if (shader == null) shader = Shader.Find("Standard");
-        return shader;
+        if (mat == null) return;
+
+        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
+        if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);
+        if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+        if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+        if (mat.HasProperty("_SrcBlendAlpha")) mat.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
+        if (mat.HasProperty("_DstBlendAlpha")) mat.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
+        if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
+
+        mat.SetOverrideTag("RenderType", "Transparent");
+        mat.renderQueue = (int)RenderQueue.Transparent;
     }
 
-    private static bool IsRetroLitForcefield(Material mat)
+    private static void ApplyDoubleSided(Material mat)
     {
-        if (mat == null || mat.shader == null) return false;
-        var matName = mat.name.ToLowerInvariant();
-        if (!matName.Contains("force") && !matName.Contains("field")) return false;
-        return mat.shader.name.ToLowerInvariant().Contains("retro shaders pro/retro lit");
+        if (mat == null) return;
+        if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
+        if (mat.HasProperty("_CullMode")) mat.SetFloat("_CullMode", 0f);
+        if (mat.HasProperty("_RenderFace")) mat.SetFloat("_RenderFace", 2f);
+        if (mat.HasProperty("_DoubleSidedEnable")) mat.SetFloat("_DoubleSidedEnable", 1f);
     }
 }
