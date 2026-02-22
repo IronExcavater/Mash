@@ -53,6 +53,7 @@ public class HelicopterFlightController : MonoBehaviour
     {
         public bool autoEnableActions = true;
         public bool keyboardFallback = false;
+        [Range(0.1f, 4f)] public float mouseSensitivity = 1.7f;
         public InputActionReference moveAction;
         public InputActionReference ascendAction;
         public InputActionReference descendAction;
@@ -280,6 +281,7 @@ public class HelicopterFlightController : MonoBehaviour
     public float EnginePower01 => enginePower;
     public Vector2 CurrentMoveInput => currentMoveInput;
     public Vector2 CurrentLiftTiltInput => currentLiftTiltInput;
+    public float MouseSensitivity => inputSettings.mouseSensitivity;
     public float HorizontalSpeed01 { get; private set; }
     public ControlScheme CurrentControlScheme => controlScheme;
     private bool IsSimpleControl => controlScheme == ControlScheme.Simple;
@@ -834,10 +836,17 @@ public class HelicopterFlightController : MonoBehaviour
     private Vector2 ReadMoveInput()
     {
         var input = resolvedMoveAction != null ? resolvedMoveAction.ReadValue<Vector2>() : Vector2.zero;
+        if (input.sqrMagnitude > 0.0001f)
+            input *= Mathf.Max(0.1f, inputSettings.mouseSensitivity);
         if (input.sqrMagnitude > 1f) input.Normalize();
         if (input.sqrMagnitude > 0.0001f) return input;
         if (!inputSettings.keyboardFallback) return input;
         return ReadKeyboardMoveInput();
+    }
+
+    public void SetMouseSensitivity(float value)
+    {
+        inputSettings.mouseSensitivity = Mathf.Clamp(value, 0.1f, 4f);
     }
 
     private float ReadVerticalInput()

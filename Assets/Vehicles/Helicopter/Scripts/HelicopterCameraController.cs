@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(Camera))]
 public class HelicopterCameraController : MonoBehaviour
@@ -108,6 +109,12 @@ public class HelicopterCameraController : MonoBehaviour
     [ConditionalField("useMenuCinematic", true)]
     [SerializeField, Min(1f)] private float menuFov = 58f;
 
+    [Header("Zoom")]
+    [SerializeField] private bool enableZoom = true;
+    [SerializeField, Min(1f)] private float zoomMinFov = 35f;
+    [SerializeField, Min(1f)] private float zoomMaxFov = 80f;
+    [SerializeField, Min(0.01f)] private float zoomScrollSensitivity = 0.06f;
+
     private Camera attachedCamera;
     private Rigidbody targetBody;
     private float complexBlend;
@@ -116,6 +123,8 @@ public class HelicopterCameraController : MonoBehaviour
     [HideInInspector, SerializeField] private bool showComplexModeSettings = true;
     private bool loggedInvalidRig;
     private float menuOrbitAngle;
+    private float zoomTargetFov;
+    private bool zoomInitialized;
 
     private void Awake()
     {
@@ -174,7 +183,8 @@ public class HelicopterCameraController : MonoBehaviour
 
         if (attachedCamera != null)
         {
-            var targetFov = Mathf.Lerp(simpleSettings.fieldOfView, complexSettings.fieldOfView, complexBlend);
+            var baseFov = Mathf.Lerp(simpleSettings.fieldOfView, complexSettings.fieldOfView, complexBlend);
+            var targetFov = GetZoomedFov(baseFov, dt);
             attachedCamera.fieldOfView = Mathf.Lerp(attachedCamera.fieldOfView, targetFov, positionLerp);
         }
     }
@@ -203,7 +213,10 @@ public class HelicopterCameraController : MonoBehaviour
         transform.SetPositionAndRotation(desiredPosition, desiredRotation);
 
         if (attachedCamera != null)
-            attachedCamera.fieldOfView = complexBlend < 0.5f ? simpleSettings.fieldOfView : complexSettings.fieldOfView;
+        {
+            var baseFov = complexBlend < 0.5f ? simpleSettings.fieldOfView : complexSettings.fieldOfView;
+            attachedCamera.fieldOfView = GetZoomedFov(baseFov, 0f);
+        }
     }
 
     private HelicopterFlightController.ControlScheme ActiveControlScheme =>
@@ -258,6 +271,7 @@ public class HelicopterCameraController : MonoBehaviour
     private void OnValidate()
     {
         if (modeBlendSpeed < 0f) modeBlendSpeed = 0f;
+        if (zoomMaxFov < zoomMinFov) zoomMaxFov = zoomMinFov;
         if (simpleSettings.lookAhead.fullSpeed < simpleSettings.lookAhead.startSpeed + 0.01f)
             simpleSettings.lookAhead.fullSpeed = simpleSettings.lookAhead.startSpeed + 0.01f;
         if (complexSettings.lookAhead.fullSpeed < complexSettings.lookAhead.startSpeed + 0.01f)
@@ -365,5 +379,35 @@ public class HelicopterCameraController : MonoBehaviour
 
         if (attachedCamera != null)
             attachedCamera.fieldOfView = Mathf.Lerp(attachedCamera.fieldOfView, menuFov, positionLerp);
+    }
+
+    private float GetZoomedFov(float baseFov, float dt)
+    {
+        if (!enableZoom)
+            return baseFov;
+
+        if (!zoomInitialized)
+        {
+            zoomTargetFov = Mathf.Clamp(baseFov, zoomMinFov, zoomMaxFov);
+            zoomInitialized = true;
+        }
+
+        var mouse = Mouse.current;
+        if (mouse != null)
+        {
+            var scrollDelta = mouse.scroll.ReadValue().y;
+            if (Mathf.Abs(scrollDelta) > 0.001f)
+            {
+                zoomTargetFov = Mathf.Clamp(
+                    zoomTargetFov - scrollDelta * zoomScrollSensitivity,
+                    zoomMinFov,
+                    zoomMaxFov);
+            }
+        }
+
+        if (dt <= 0f)
+            return zoomTargetFov;
+
+        return Mathf.Lerp(baseFov, zoomTargetFov, 1f);
     }
 }

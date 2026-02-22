@@ -83,6 +83,8 @@ public class MashGameUIController : MonoBehaviour
     [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private UnityEngine.UI.Slider soundMasterVolumeSlider;
     [ConditionalField("autoAssignUiBindings", false)]
+    [SerializeField] private UnityEngine.UI.Slider gameplayMouseSensitivitySlider;
+    [ConditionalField("autoAssignUiBindings", false)]
     [SerializeField] private TMP_Dropdown gameplayControlModeDropdown;
     [ConditionalField("autoAssignUiBindings", false, "Loading")]
     [SerializeField] private TMP_Text loadingLabelText;
@@ -178,6 +180,7 @@ public class MashGameUIController : MonoBehaviour
         AutoAssign(ref displayFullscreenToggle, "DisplayFullscreenToggle");
         AutoAssign(ref displayModeDropdown, "DisplayModeDropdown");
         AutoAssign(ref soundMasterVolumeSlider, "SoundMasterVolumeSlider");
+        AutoAssign(ref gameplayMouseSensitivitySlider, "GameplayMouseSensitivitySlider");
         AutoAssign(ref gameplayControlModeDropdown, "GameplayControlModeDropdown");
         loadingLabelText ??= FindTextByName("LoadingOverlayPanel/LoadingLabel");
     }
@@ -216,6 +219,16 @@ public class MashGameUIController : MonoBehaviour
             soundMasterVolumeSlider.wholeNumbers = false;
             soundMasterVolumeSlider.SetValueWithoutNotify(AudioListener.volume);
             soundMasterVolumeSlider.onValueChanged.AddListener(OnMasterVolumeChanged);
+        }
+
+        if (gameplayMouseSensitivitySlider != null)
+        {
+            gameplayMouseSensitivitySlider.minValue = 0.2f;
+            gameplayMouseSensitivitySlider.maxValue = 3f;
+            gameplayMouseSensitivitySlider.wholeNumbers = false;
+            var currentSensitivity = helicopterFlight != null ? helicopterFlight.MouseSensitivity : 1.7f;
+            gameplayMouseSensitivitySlider.SetValueWithoutNotify(currentSensitivity);
+            gameplayMouseSensitivitySlider.onValueChanged.AddListener(OnMouseSensitivityChanged);
         }
 
         if (gameplayControlModeDropdown != null)
@@ -636,6 +649,12 @@ public class MashGameUIController : MonoBehaviour
     private static void OnMasterVolumeChanged(float value)
     {
         AudioListener.volume = Mathf.Clamp01(value);
+    }
+
+    private void OnMouseSensitivityChanged(float value)
+    {
+        if (helicopterFlight == null) return;
+        helicopterFlight.SetMouseSensitivity(value);
     }
 
     private void OnControlModeChanged(int selectedIndex)
