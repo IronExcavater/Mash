@@ -36,6 +36,7 @@ MonoBehaviour:
   baseHeightOffset01: 0
   excludeEnvironmentFromBase: 1
   baseNoSpawnPadding: 10
+  terrainMaterialTemplate: {fileID: 2100000, guid: 7986486de872d4b44a3eabf8bc9c8f0d, type: 2}
   baseLayer: {fileID: 8574412962073106934, guid: 9452e35d7aacb5243bf0524a2bb5153a, type: 2}
   midLayer: {fileID: 8574412962073106934, guid: 9c5d5dc8207dee34b89e8eb1b30d4189, type: 2}
   steepLayer: {fileID: 8574412962073106934, guid: ea319253884cee84fb8026603b7ff0b7, type: 2}

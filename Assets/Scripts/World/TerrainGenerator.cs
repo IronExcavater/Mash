@@ -27,6 +27,7 @@ public class TerrainGenerator : MonoBehaviour
     [ConditionalField("generationMode", (int)GenerationMode.Manual)]
     [SerializeField] private Terrain targetTerrain;
     [SerializeField] private TerrainBiomeProfile biomeProfile;
+    [SerializeField] private Material terrainMaterialTemplate;
 
     [Header("Seed")]
     [SerializeField] private int seed = 0;
@@ -45,6 +46,7 @@ public class TerrainGenerator : MonoBehaviour
 
 #if UNITY_EDITOR
     private bool pendingEditorSeedRefresh;
+    private const string TerrainMaterialAssetPath = "Assets/Terrain/Materials/Terrain_URP_Lit.mat";
 #endif
 
     private void Awake()
@@ -90,7 +92,7 @@ public class TerrainGenerator : MonoBehaviour
         RaiseStarted();
         activeGenerationSeed = seed;
         lastGeneratedSeed = activeGenerationSeed;
-        var terrain = ResolveTerrainForGeneration(createIfMissing: true);
+        var terrain = GetOrCreateTerrain();
         if (terrain == null)
         {
             RaiseFailed("No terrain available to generate.");
@@ -102,7 +104,11 @@ public class TerrainGenerator : MonoBehaviour
         data.heightmapResolution = resolution;
         data.size = new Vector3(biomeProfile.terrainWidth, biomeProfile.terrainHeight, biomeProfile.terrainLength);
         data.SetHeights(0, 0, BuildHeightMap(resolution));
-        var layers = ResolveTerrainLayers();
+        if (!TryGetTerrainLayers(out var layers))
+        {
+            RaiseFailed("TerrainBiomeProfile must define all 5 terrain layers.");
+            return;
+        }
         data.terrainLayers = layers;
         PaintLayerBlending(data);
 
@@ -129,7 +135,7 @@ public class TerrainGenerator : MonoBehaviour
         RaiseStarted();
         activeGenerationSeed = seed;
         lastGeneratedSeed = activeGenerationSeed;
-        var terrain = ResolveTerrainForGeneration(createIfMissing: true);
+        var terrain = GetOrCreateTerrain();
         if (terrain == null)
         {
             RaiseFailed("No terrain available to generate.");
@@ -146,7 +152,12 @@ public class TerrainGenerator : MonoBehaviour
         yield return StartCoroutine(BuildHeightMapAsync(resolution, heights));
         data.SetHeights(0, 0, heights);
 
-        var layers = ResolveTerrainLayers();
+        if (!TryGetTerrainLayers(out var layers))
+        {
+            RaiseFailed("TerrainBiomeProfile must define all 5 terrain layers.");
+            generationRoutine = null;
+            yield break;
+        }
         data.terrainLayers = layers;
         PaintLayerBlending(data);
 
@@ -165,15 +176,15 @@ public class TerrainGenerator : MonoBehaviour
 
     private void Start()
     {
-        RunConfiguredGenerationMode();
+        RunGenerationMode();
     }
 
-    private void RunConfiguredGenerationMode()
+    private void RunGenerationMode()
     {
         switch (generationMode)
         {
             case GenerationMode.Manual:
-                if (targetTerrain != null) SyncTerrainColliderData(targetTerrain);
+                if (targetTerrain != null) ApplyTerrainRuntimeSettings(targetTerrain);
                 break;
             case GenerationMode.OnMissing:
             {
@@ -186,14 +197,14 @@ public class TerrainGenerator : MonoBehaviour
                 {
                     if (targetTerrain == null) targetTerrain = foundTerrain;
                     if (IsTerrainMissingCriticalData(foundTerrain)) GenerateTerrain();
-                    else SyncTerrainColliderData(foundTerrain);
+                    else ApplyTerrainRuntimeSettings(foundTerrain);
                 }
                 break;
             }
             case GenerationMode.OnSeedChanged:
             {
                 if (targetTerrain == null) targetTerrain = FindFirstObjectByType<Terrain>();
-                if (targetTerrain != null) SyncTerrainColliderData(targetTerrain);
+                if (targetTerrain != null) ApplyTerrainRuntimeSettings(targetTerrain);
                 if (targetTerrain == null || IsTerrainUninitialized(targetTerrain) || HasSeedChangedSinceLastGeneration())
                     GenerateTerrain();
                 break;
@@ -206,17 +217,12 @@ public class TerrainGenerator : MonoBehaviour
         }
     }
 
-    private Terrain ResolveTerrainForGeneration(bool createIfMissing)
+    private Terrain GetOrCreateTerrain()
     {
         if (targetTerrain == null)
             targetTerrain = FindFirstObjectByType<Terrain>();
 
         if (targetTerrain != null) return targetTerrain;
-        if (!createIfMissing)
-        {
-            Debug.LogWarning("TerrainGenerator: No terrain found and creation is disabled for this call.", this);
-            return null;
-        }
 
         var terrainObject = new GameObject("Terrain");
         var terrain = terrainObject.AddComponent<Terrain>();
@@ -445,7 +451,7 @@ public class TerrainGenerator : MonoBehaviour
         float worldX,
         float worldY,
         Vector2 duneDir,
-        float activeDuneFrequency,
+        float duneFrequency,
         float duneVariation,
         float waveOffsetX,
         float waveOffsetY)
@@ -457,13 +463,13 @@ public class TerrainGenerator : MonoBehaviour
             waveOffsetX + worldX * warpNoiseScale,
             waveOffsetY + worldY * warpNoiseScale) - 0.5f;
         var warp = warpNoise * warpAmount;
-        var waveA = Mathf.Sin((projected + warp) * activeDuneFrequency * Mathf.PI * 2f);
-        var waveB = Mathf.Sin((projected * 1.8f - warp * 0.35f) * activeDuneFrequency * Mathf.PI * 2f);
+        var waveA = Mathf.Sin((projected + warp) * duneFrequency * Mathf.PI * 2f);
+        var waveB = Mathf.Sin((projected * 1.8f - warp * 0.35f) * duneFrequency * Mathf.PI * 2f);
         var ridgeA = Mathf.Pow(Mathf.Abs(waveA), 1.7f);
         var ridgeB = Mathf.Pow(Mathf.Abs(waveB), 2.2f) * 0.22f;
         var longWave = (Mathf.PerlinNoise(
-            waveOffsetX * 0.37f + worldX * activeDuneFrequency * 0.18f,
-            waveOffsetY * 0.37f + worldY * activeDuneFrequency * 0.18f) - 0.5f) * Mathf.Lerp(0.03f, 0.15f, duneVariation);
+            waveOffsetX * 0.37f + worldX * duneFrequency * 0.18f,
+            waveOffsetY * 0.37f + worldY * duneFrequency * 0.18f) - 0.5f) * Mathf.Lerp(0.03f, 0.15f, duneVariation);
         var dunes = ridgeA * 0.76f + ridgeB + longWave;
         dunes = 0.5f + (dunes - 0.5f) * Mathf.Lerp(0.35f, 0.8f, duneVariation);
         return Mathf.Clamp01(dunes);
@@ -559,78 +565,32 @@ public class TerrainGenerator : MonoBehaviour
         return sum / count;
     }
 
-    private TerrainLayer[] ResolveTerrainLayers()
+    private bool TryGetTerrainLayers(out TerrainLayer[] layers)
     {
-        var activeTileSize = biomeProfile.tileSize;
-        var baseLayer = biomeProfile.baseLayer;
-        var midLayer = biomeProfile.midLayer;
-        var steepLayer = biomeProfile.steepLayer;
-        var accentLayer = biomeProfile.accentLayer;
-        var detailLayer = biomeProfile.detailLayer;
-        var activeBaseFallbackColor = biomeProfile.fallbackBaseColor;
-        var activeMidFallbackColor = biomeProfile.fallbackMidColor;
-        var activeSteepFallbackColor = biomeProfile.fallbackSteepColor;
-        var activeAccentFallbackColor = biomeProfile.fallbackAccentColor;
-        var activeDetailFallbackColor = biomeProfile.fallbackDetailColor;
+        layers = null;
+        if (biomeProfile.baseLayer == null ||
+            biomeProfile.midLayer == null ||
+            biomeProfile.steepLayer == null ||
+            biomeProfile.accentLayer == null ||
+            biomeProfile.detailLayer == null)
+            return false;
 
-        if (baseLayer == null)
-        {
-            baseLayer = new TerrainLayer
-            {
-                diffuseTexture = BuildSolidTexture(activeBaseFallbackColor),
-                tileSize = activeTileSize
-            };
-        }
-        if (midLayer == null)
-        {
-            midLayer = new TerrainLayer
-            {
-                diffuseTexture = BuildSolidTexture(activeMidFallbackColor),
-                tileSize = activeTileSize * 0.9f
-            };
-        }
-        if (steepLayer == null)
-        {
-            steepLayer = new TerrainLayer
-            {
-                diffuseTexture = BuildSolidTexture(activeSteepFallbackColor),
-                tileSize = activeTileSize * 0.8f
-            };
-        }
-        if (accentLayer == null)
-        {
-            accentLayer = new TerrainLayer
-            {
-                diffuseTexture = BuildSolidTexture(activeAccentFallbackColor),
-                tileSize = activeTileSize * 0.72f
-            };
-        }
-        if (detailLayer == null)
-        {
-            detailLayer = new TerrainLayer
-            {
-                diffuseTexture = BuildSolidTexture(activeDetailFallbackColor),
-                tileSize = activeTileSize * 0.6f
-            };
-        }
-        baseLayer.tileSize = activeTileSize;
-        midLayer.tileSize = activeTileSize * 0.9f;
-        steepLayer.tileSize = activeTileSize * 0.8f;
-        accentLayer.tileSize = activeTileSize * 0.72f;
-        detailLayer.tileSize = activeTileSize * 0.6f;
-        ApplyLayerColorRemap(baseLayer, activeBaseFallbackColor);
-        ApplyLayerColorRemap(midLayer, activeMidFallbackColor);
-        ApplyLayerColorRemap(steepLayer, activeSteepFallbackColor);
-        ApplyLayerColorRemap(accentLayer, activeAccentFallbackColor);
-        ApplyLayerColorRemap(detailLayer, activeDetailFallbackColor);
-        return new[] { baseLayer, midLayer, steepLayer, accentLayer, detailLayer };
-    }
+        var tileSize = biomeProfile.tileSize;
+        biomeProfile.baseLayer.tileSize = tileSize;
+        biomeProfile.midLayer.tileSize = tileSize * 0.9f;
+        biomeProfile.steepLayer.tileSize = tileSize * 0.8f;
+        biomeProfile.accentLayer.tileSize = tileSize * 0.72f;
+        biomeProfile.detailLayer.tileSize = tileSize * 0.6f;
 
-    private static void ApplyLayerColorRemap(TerrainLayer layer, Color tint)
-    {
-        if (layer == null) return;
-        layer.diffuseRemapMin = new Vector4(0f, 0f, 0f, 0f);
-        layer.diffuseRemapMax = new Vector4(1f, 1f, 1f, 1f);
+        layers = new[]
+        {
+            biomeProfile.baseLayer,
+            biomeProfile.midLayer,
+            biomeProfile.steepLayer,
+            biomeProfile.accentLayer,
+            biomeProfile.detailLayer
+        };
+        return true;
     }
 
     private static bool IsTerrainUninitialized(Terrain terrain)
@@ -662,7 +622,6 @@ public class TerrainGenerator : MonoBehaviour
         if (collider.terrainData != terrain.terrainData) return true;
 
         if (terrain.terrainData.terrainLayers == null || terrain.terrainData.terrainLayers.Length == 0) return true;
-        if (terrain.materialTemplate == null) return true;
 
         return false;
     }
@@ -680,18 +639,20 @@ public class TerrainGenerator : MonoBehaviour
         terrain.basemapDistance = 8000f;
         terrain.detailObjectDistance = 2500f;
         terrain.treeDistance = 5000f;
-        terrain.drawInstanced = true;
+        terrain.drawInstanced = false;
+        terrain.drawHeightmap = true;
+        terrain.drawTreesAndFoliage = true;
     }
 
     private void PaintLayerBlending(TerrainData data)
     {
         if (data == null || data.terrainLayers == null || data.terrainLayers.Length == 0) return;
-        var activeSlopeBlendMin = Mathf.Min(biomeProfile.slopeBlend.min, biomeProfile.slopeBlend.max);
-        var activeSlopeBlendMax = Mathf.Max(biomeProfile.slopeBlend.min, biomeProfile.slopeBlend.max);
-        var activeHeightBlendMin = Mathf.Min(biomeProfile.heightBlend.min, biomeProfile.heightBlend.max);
-        var activeHeightBlendMax = Mathf.Max(biomeProfile.heightBlend.min, biomeProfile.heightBlend.max);
-        var activeBlendNoiseScale = biomeProfile.blendNoiseScale;
-        var activeBlendNoiseStrength = biomeProfile.blendNoiseStrength;
+        var slopeBlendMin = Mathf.Min(biomeProfile.slopeBlend.min, biomeProfile.slopeBlend.max);
+        var slopeBlendMax = Mathf.Max(biomeProfile.slopeBlend.min, biomeProfile.slopeBlend.max);
+        var heightBlendMin = Mathf.Min(biomeProfile.heightBlend.min, biomeProfile.heightBlend.max);
+        var heightBlendMax = Mathf.Max(biomeProfile.heightBlend.min, biomeProfile.heightBlend.max);
+        var blendNoiseScale = biomeProfile.blendNoiseScale;
+        var blendNoiseStrength = biomeProfile.blendNoiseStrength;
         var macroNoiseScale = Mathf.Max(0.00001f, biomeProfile.blendMacroNoiseScale);
         var macroNoiseStrength = Mathf.Clamp01(biomeProfile.blendMacroNoiseStrength);
         var warpDistance = Mathf.Max(0f, biomeProfile.blendWarpDistance);
@@ -711,7 +672,7 @@ public class TerrainGenerator : MonoBehaviour
         var seedOffset = activeGenerationSeed * 0.000137f;
         var terrainWidth = Mathf.Max(1f, data.size.x);
         var terrainLength = Mathf.Max(1f, data.size.z);
-        var noiseScale = Mathf.Max(0.00001f, activeBlendNoiseScale);
+        var noiseScale = Mathf.Max(0.00001f, blendNoiseScale);
 
         for (var y = 0; y < alphaRes; y++)
         {
@@ -735,7 +696,7 @@ public class TerrainGenerator : MonoBehaviour
                 var mixedX = worldX + warpX;
                 var mixedZ = worldZ + warpZ;
 
-                var noise = (Mathf.PerlinNoise(seedOffset + mixedX * noiseScale, seedOffset + mixedZ * noiseScale) - 0.5f) * activeBlendNoiseStrength * 0.2f;
+                var noise = (Mathf.PerlinNoise(seedOffset + mixedX * noiseScale, seedOffset + mixedZ * noiseScale) - 0.5f) * blendNoiseStrength * 0.2f;
                 var roughA = Mathf.PerlinNoise(seedOffset * 1.7f + mixedX * noiseScale * 1.4f, seedOffset * 1.7f + mixedZ * noiseScale * 1.4f) - 0.5f;
                 var roughB = Mathf.PerlinNoise(seedOffset * 2.9f + mixedX * noiseScale * 3.0f, seedOffset * 2.9f + mixedZ * noiseScale * 3.0f) - 0.5f;
                 var roughOverlay = Mathf.Clamp01(0.5f + roughA * 0.65f + roughB * 0.35f);
@@ -745,8 +706,8 @@ public class TerrainGenerator : MonoBehaviour
                 var bands = Mathf.Sin((mixedX + mixedZ) * 0.013f + seedOffset * 4200f) * 0.5f + 0.5f;
                 var patternBlend = Mathf.Clamp01(Mathf.Lerp(macroBlend, bands, bandStrength * 0.65f));
 
-                var slopeMask = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(activeSlopeBlendMin, activeSlopeBlendMax, slope01 + noise));
-                var heightMask = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(activeHeightBlendMin, activeHeightBlendMax, height01 + noise * 0.6f));
+                var slopeMask = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(slopeBlendMin, slopeBlendMax, slope01 + noise));
+                var heightMask = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(heightBlendMin, heightBlendMax, height01 + noise * 0.6f));
 
                 // 5-layer blend: base/mid/steep/accent/detail with explicit random breakup.
                 var wSteep = Mathf.Clamp01(slopeMask * 0.68f + (1f - patternBlend) * macroNoiseStrength * 0.2f);
@@ -829,18 +790,30 @@ public class TerrainGenerator : MonoBehaviour
         }
     }
 
-    private static void ApplyTerrainMaterialTemplate(Terrain terrain)
+    private void ApplyTerrainMaterialTemplate(Terrain terrain)
     {
         if (terrain == null) return;
-        var shader = Shader.Find("Universal Render Pipeline/Terrain/Lit");
-        if (shader == null) shader = Shader.Find("Nature/Terrain/Standard");
-        if (shader == null) return;
 
-        if (terrain.materialTemplate == null || terrain.materialTemplate.shader != shader)
+        if (terrainMaterialTemplate != null)
         {
-            var material = new Material(shader) { name = "TerrainRuntimeMaterial" };
-            terrain.materialTemplate = material;
+            if (terrainMaterialTemplate.shader != null)
+                terrain.materialTemplate = terrainMaterialTemplate;
+            else
+                terrain.materialTemplate = null;
+            return;
         }
+
+        if (terrain.materialTemplate != null && terrain.materialTemplate.shader != null) return;
+
+        var shader = Shader.Find("Universal Render Pipeline/Terrain/Lit");
+        if (shader == null)
+        {
+            terrain.materialTemplate = null;
+            return;
+        }
+
+        // Last-resort runtime assignment when no serialized template is present.
+        terrain.materialTemplate = new Material(shader) { name = "TerrainRuntimeMaterial" };
     }
 
     private static void SyncTerrainColliderData(Terrain terrain)
@@ -851,11 +824,39 @@ public class TerrainGenerator : MonoBehaviour
         collider.terrainData = terrain.terrainData;
     }
 
+    private void ApplyTerrainRuntimeSettings(Terrain terrain)
+    {
+        if (terrain == null) return;
+        SyncTerrainColliderData(terrain);
+        ApplyTerrainDrawDistances(terrain);
+        ApplyTerrainMaterialTemplate(terrain);
+    }
+
 #if UNITY_EDITOR
     private void OnValidate()
     {
         EnsureSeedInitialized();
+        EnsureTerrainMaterialTemplateEditorOnly();
         QueueEditorSeedRefreshIfNeeded();
+    }
+
+    private void EnsureTerrainMaterialTemplateEditorOnly()
+    {
+        if (terrainMaterialTemplate != null) return;
+
+        var shader = Shader.Find("Universal Render Pipeline/Terrain/Lit");
+        if (shader == null) return;
+
+        var material = AssetDatabase.LoadAssetAtPath<Material>(TerrainMaterialAssetPath);
+        if (material == null)
+        {
+            material = new Material(shader) { name = "Terrain_URP_Lit" };
+            AssetDatabase.CreateAsset(material, TerrainMaterialAssetPath);
+            AssetDatabase.SaveAssets();
+        }
+
+        terrainMaterialTemplate = material;
+        EditorUtility.SetDirty(this);
     }
 
     private void QueueEditorSeedRefreshIfNeeded()
@@ -884,18 +885,18 @@ public class TerrainGenerator : MonoBehaviour
         var root = FindOrCreateGeneratedRoot();
         ClearChildren(root);
 
-        var activeGenerateRoad = biomeProfile.generateRoad;
-        var activeGenerateTrees = biomeProfile.generateTrees;
-        var activeGenerateObjects = biomeProfile.generateObjects;
-        var activeRoadWidth = biomeProfile.roadWidth;
-        var activeTreePrefabs = biomeProfile.treePrefabs;
-        var activeTreeCount = Mathf.RoundToInt(biomeProfile.treeCount * 1.15f);
-        var activeObjectPrefabs = biomeProfile.objectPrefabs;
-        var activeObjectCount = biomeProfile.objectCount;
+        var generateRoad = biomeProfile.generateRoad;
+        var generateTrees = biomeProfile.generateTrees;
+        var generateObjects = biomeProfile.generateObjects;
+        var roadWidth = biomeProfile.roadWidth;
+        var treePrefabs = biomeProfile.treePrefabs;
+        var treeCount = Mathf.RoundToInt(biomeProfile.treeCount * 1.15f);
+        var objectPrefabs = biomeProfile.objectPrefabs;
+        var objectCount = biomeProfile.objectCount;
 
-        if (activeGenerateRoad) SpawnRoad(terrain, root, activeRoadWidth);
-        if (activeGenerateTrees) ScatterPrefabs(terrain, root, activeTreePrefabs, activeTreeCount, "Trees");
-        if (activeGenerateObjects) ScatterPrefabs(terrain, root, activeObjectPrefabs, activeObjectCount, "Objects");
+        if (generateRoad) SpawnRoad(terrain, root, roadWidth);
+        if (generateTrees) ScatterPrefabs(terrain, root, treePrefabs, treeCount, "Trees");
+        if (generateObjects) ScatterPrefabs(terrain, root, objectPrefabs, objectCount, "Objects");
     }
 
     private IEnumerator GenerateEnvironmentAsync(Terrain terrain)
@@ -905,24 +906,24 @@ public class TerrainGenerator : MonoBehaviour
         ClearChildren(root);
         yield return null;
 
-        var activeGenerateRoad = biomeProfile.generateRoad;
-        var activeGenerateTrees = biomeProfile.generateTrees;
-        var activeGenerateObjects = biomeProfile.generateObjects;
-        var activeRoadWidth = biomeProfile.roadWidth;
-        var activeTreePrefabs = biomeProfile.treePrefabs;
-        var activeTreeCount = Mathf.RoundToInt(biomeProfile.treeCount * 1.15f);
-        var activeObjectPrefabs = biomeProfile.objectPrefabs;
-        var activeObjectCount = biomeProfile.objectCount;
+        var generateRoad = biomeProfile.generateRoad;
+        var generateTrees = biomeProfile.generateTrees;
+        var generateObjects = biomeProfile.generateObjects;
+        var roadWidth = biomeProfile.roadWidth;
+        var treePrefabs = biomeProfile.treePrefabs;
+        var treeCount = Mathf.RoundToInt(biomeProfile.treeCount * 1.15f);
+        var objectPrefabs = biomeProfile.objectPrefabs;
+        var objectCount = biomeProfile.objectCount;
 
-        if (activeGenerateRoad)
+        if (generateRoad)
         {
-            SpawnRoad(terrain, root, activeRoadWidth);
+            SpawnRoad(terrain, root, roadWidth);
             yield return null;
         }
-        if (activeGenerateTrees)
-            yield return StartCoroutine(ScatterPrefabsAsync(terrain, root, activeTreePrefabs, activeTreeCount, "Trees"));
-        if (activeGenerateObjects)
-            yield return StartCoroutine(ScatterPrefabsAsync(terrain, root, activeObjectPrefabs, activeObjectCount, "Objects"));
+        if (generateTrees)
+            yield return StartCoroutine(ScatterPrefabsAsync(terrain, root, treePrefabs, treeCount, "Trees"));
+        if (generateObjects)
+            yield return StartCoroutine(ScatterPrefabsAsync(terrain, root, objectPrefabs, objectCount, "Objects"));
     }
 
     private Transform FindOrCreateGeneratedRoot()
@@ -944,7 +945,7 @@ public class TerrainGenerator : MonoBehaviour
         }
     }
 
-    private void SpawnRoad(Terrain terrain, Transform root, float activeRoadWidth)
+    private void SpawnRoad(Terrain terrain, Transform root, float roadWidth)
     {
         var road = GameObject.CreatePrimitive(PrimitiveType.Cube);
         road.name = "Road";
@@ -952,7 +953,7 @@ public class TerrainGenerator : MonoBehaviour
         var center = terrain.transform.position + new Vector3(biomeProfile.terrainWidth * 0.5f, 0f, biomeProfile.terrainLength * 0.5f);
         center.y = terrain.SampleHeight(center) + terrain.transform.position.y + 0.05f;
         road.transform.position = center;
-        road.transform.localScale = new Vector3(biomeProfile.terrainWidth * 0.7f, 0.1f, activeRoadWidth);
+        road.transform.localScale = new Vector3(biomeProfile.terrainWidth * 0.7f, 0.1f, roadWidth);
     }
 
     private void ScatterPrefabs(Terrain terrain, Transform root, GameObject[] prefabs, int count, string containerName)
@@ -1107,14 +1108,7 @@ public class TerrainGenerator : MonoBehaviour
             }
         }
 
-        try
-        {
-            treeRoot.tag = "Tree";
-        }
-        catch
-        {
-            // Ignore if the tag does not exist in this project.
-        }
+        treeRoot.tag = "Tree";
     }
 
     private bool IsInsideBaseExclusionZone(Vector3 worldPosition, bool isTreeSpawn)
@@ -1141,79 +1135,31 @@ public class TerrainGenerator : MonoBehaviour
         return delta.sqrMagnitude <= exclusionRadius * exclusionRadius;
     }
 
-    private static Texture2D BuildSolidTexture(Color color)
-    {
-        var texture = new Texture2D(2, 2, TextureFormat.RGB24, false);
-        texture.SetPixel(0, 0, color);
-        texture.SetPixel(1, 0, color);
-        texture.SetPixel(0, 1, color);
-        texture.SetPixel(1, 1, color);
-        texture.Apply();
-        return texture;
-    }
-
     private void RaiseStarted()
     {
         IsGenerating = true;
-        InvokeSafe(GenerationStarted, "GenerationStarted");
+        GenerationStarted?.Invoke();
         onGenerationStarted?.Invoke();
     }
 
     private void RaiseCompleted()
     {
         IsGenerating = false;
-        InvokeSafe(GenerationCompleted, "GenerationCompleted");
+        GenerationCompleted?.Invoke();
         onGenerationCompleted?.Invoke();
     }
 
     private void RaiseFailed(string reason)
     {
         IsGenerating = false;
-        InvokeSafe(GenerationFailed, reason, "GenerationFailed");
+        GenerationFailed?.Invoke(reason);
         onGenerationFailed?.Invoke(reason);
-    }
-
-    private void InvokeSafe(System.Action action, string eventName)
-    {
-        if (action == null) return;
-        var delegates = action.GetInvocationList();
-        for (var i = 0; i < delegates.Length; i++)
-        {
-            try
-            {
-                ((System.Action)delegates[i])();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(new Exception($"TerrainGenerator {eventName} listener failed.", ex), this);
-            }
-        }
-    }
-
-    private void InvokeSafe(System.Action<string> action, string arg, string eventName)
-    {
-        if (action == null) return;
-        var delegates = action.GetInvocationList();
-        for (var i = 0; i < delegates.Length; i++)
-        {
-            try
-            {
-                ((System.Action<string>)delegates[i])(arg);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(new Exception($"TerrainGenerator {eventName} listener failed.", ex), this);
-            }
-        }
     }
 
     private bool ShouldGenerateEnvironment()
     {
         if (biomeProfile == null) return false;
-        var activeTrees = biomeProfile.generateTrees;
-        var activeObjects = biomeProfile.generateObjects;
-        var activeRoad = biomeProfile.generateRoad;
-        return activeTrees || activeObjects || activeRoad;
+        return biomeProfile.generateTrees || biomeProfile.generateObjects || biomeProfile.generateRoad;
     }
 
     [Button("Generate New Seed", 26f)]

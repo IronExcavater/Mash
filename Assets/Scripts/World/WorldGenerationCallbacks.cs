@@ -12,7 +12,7 @@ public class WorldGenerationCallbacks : MonoBehaviour
 
     private void OnEnable()
     {
-        AutoResolveReferences();
+        CacheReferences();
         Subscribe();
     }
 
@@ -23,7 +23,7 @@ public class WorldGenerationCallbacks : MonoBehaviour
 
     private void OnValidate()
     {
-        AutoResolveReferences();
+        CacheReferences();
     }
 
     private void Subscribe()
@@ -56,19 +56,15 @@ public class WorldGenerationCallbacks : MonoBehaviour
 
     private void ApplyHelicopterStartupPlacement()
     {
-        if (helicopterFlight == null)
-            helicopterFlight = FindFirstObjectByType<HelicopterFlightController>();
+        helicopterFlight ??= FindFirstObjectByType<HelicopterFlightController>();
         if (helicopterFlight == null) return;
         helicopterFlight.ReapplyStartupPlacementNow();
     }
 
-    private void AutoResolveReferences()
+    private void CacheReferences()
     {
-        if (terrainGenerator == null)
-            terrainGenerator = FindFirstObjectByType<TerrainGenerator>();
-        if (militaryBaseGenerator == null)
-            militaryBaseGenerator = FindFirstObjectByType<MilitaryBaseGenerator>();
-        if (helicopterFlight == null)
-            helicopterFlight = FindFirstObjectByType<HelicopterFlightController>();
+        terrainGenerator ??= FindFirstObjectByType<TerrainGenerator>();
+        militaryBaseGenerator ??= FindFirstObjectByType<MilitaryBaseGenerator>();
+        helicopterFlight ??= FindFirstObjectByType<HelicopterFlightController>();
     }
 }

@@ -91,8 +91,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
         if (!Application.isPlaying) return;
         if (rebuildAfterTerrainGeneration)
         {
-            if (terrainGenerator == null)
-                terrainGenerator = FindFirstObjectByType<TerrainGenerator>();
+            terrainGenerator ??= FindFirstObjectByType<TerrainGenerator>();
             if (terrainGenerator != null)
                 return;
         }
@@ -134,8 +133,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
 
     private void BuildOrRefreshBaseImmediate()
     {
-        if (targetTerrain == null)
-            targetTerrain = FindFirstObjectByType<Terrain>();
+        targetTerrain = ResolveTerrain();
         if (targetTerrain == null)
         {
             Debug.LogWarning("MilitaryBaseGenerator: No terrain found.", this);
@@ -148,7 +146,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
         if (flattenTerrain)
             FlattenBaseArea(targetTerrain, center, centerGroundY);
 
-        ResolveBaseRoot();
+        EnsureBaseRoot();
         if (baseRoot == null) return;
         if (clearExistingChildren) ClearChildren(baseRoot);
 
@@ -157,8 +155,8 @@ public class MilitaryBaseGenerator : MonoBehaviour
         BuildWatchTowers(center);
         BuildPatternBuildings(center);
         BuildHelipad(center, centerGroundY);
-        if (!createBaseHoverZone) createBaseHoverZone = true;
-        BuildBaseHoverZone(center, centerGroundY);
+        if (createBaseHoverZone)
+            BuildBaseHoverZone(center, centerGroundY);
         ScatterJunk(center);
         if (disableCollidersOnExistingTreesInsideBase)
             DisableCollidersOnExistingTrees(center);
@@ -169,8 +167,15 @@ public class MilitaryBaseGenerator : MonoBehaviour
 
     private IEnumerator BuildOrRefreshBaseRoutine()
     {
-        if (targetTerrain == null)
-            targetTerrain = FindFirstObjectByType<Terrain>();
+        targetTerrain = ResolveTerrain();
+        var waitFrames = 0;
+        while (targetTerrain == null && waitFrames < 12)
+        {
+            waitFrames++;
+            yield return null;
+            targetTerrain = ResolveTerrain();
+        }
+
         if (targetTerrain == null)
         {
             Debug.LogWarning("MilitaryBaseGenerator: No terrain found.", this);
@@ -186,7 +191,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
             yield return null;
         }
 
-        ResolveBaseRoot();
+        EnsureBaseRoot();
         if (baseRoot == null) yield break;
         if (clearExistingChildren)
         {
@@ -198,8 +203,8 @@ public class MilitaryBaseGenerator : MonoBehaviour
         BuildWatchTowers(center);
         BuildPatternBuildings(center);
         BuildHelipad(center, centerGroundY);
-        if (!createBaseHoverZone) createBaseHoverZone = true;
-        BuildBaseHoverZone(center, centerGroundY);
+        if (createBaseHoverZone)
+            BuildBaseHoverZone(center, centerGroundY);
         ScatterJunk(center);
         if (disableCollidersOnExistingTreesInsideBase)
             DisableCollidersOnExistingTrees(center);
@@ -212,8 +217,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
     private void SubscribeTerrainGeneration()
     {
         if (!rebuildAfterTerrainGeneration) return;
-        if (terrainGenerator == null)
-            terrainGenerator = FindFirstObjectByType<TerrainGenerator>();
+        terrainGenerator ??= FindFirstObjectByType<TerrainGenerator>();
         if (terrainGenerator == null) return;
         terrainGenerator.GenerationCompleted -= HandleTerrainGenerated;
         terrainGenerator.GenerationCompleted += HandleTerrainGenerated;
@@ -228,10 +232,34 @@ public class MilitaryBaseGenerator : MonoBehaviour
     private void HandleTerrainGenerated()
     {
         if (!rebuildAfterTerrainGeneration) return;
+        targetTerrain = ResolveTerrain();
         BuildOrRefreshBase();
     }
 
-    private void ResolveBaseRoot()
+    private Terrain ResolveTerrain()
+    {
+        if (targetTerrain != null) return targetTerrain;
+
+        targetTerrain = Terrain.activeTerrain;
+        if (targetTerrain != null) return targetTerrain;
+
+        targetTerrain = FindFirstObjectByType<Terrain>();
+        if (targetTerrain != null) return targetTerrain;
+
+        var terrains = Resources.FindObjectsOfTypeAll<Terrain>();
+        for (var i = 0; i < terrains.Length; i++)
+        {
+            var terrain = terrains[i];
+            if (terrain == null) continue;
+            if (!terrain.gameObject.scene.IsValid()) continue;
+            targetTerrain = terrain;
+            return targetTerrain;
+        }
+
+        return null;
+    }
+
+    private void EnsureBaseRoot()
     {
         if (baseRoot != null) return;
         var existing = transform.Find(DefaultBaseRootName);
@@ -891,26 +919,18 @@ public class MilitaryBaseGenerator : MonoBehaviour
 
     private void DisableCollidersOnExistingTrees(Vector3 center)
     {
-        var safeRadius = Mathf.Max(helipadRadius * 1.5f, Mathf.Max(wallWidth, wallLength) * 0.55f);
-        GameObject[] taggedTrees;
-        try
-        {
-            taggedTrees = GameObject.FindGameObjectsWithTag("Tree");
-        }
-        catch
-        {
-            return;
-        }
+        var protectedRadius = Mathf.Max(helipadRadius * 1.5f, Mathf.Max(wallWidth, wallLength) * 0.55f);
+        var taggedTrees = GameObject.FindGameObjectsWithTag("Tree");
 
         if (taggedTrees == null || taggedTrees.Length == 0) return;
-        var safeRadiusSqr = safeRadius * safeRadius;
+        var protectedRadiusSqr = protectedRadius * protectedRadius;
         for (var i = 0; i < taggedTrees.Length; i++)
         {
             var tree = taggedTrees[i];
             if (tree == null) continue;
             var delta = tree.transform.position - center;
             delta.y = 0f;
-            if (delta.sqrMagnitude > safeRadiusSqr) continue;
+            if (delta.sqrMagnitude > protectedRadiusSqr) continue;
             DisableCollidersForBaseTree(tree.transform);
         }
     }
