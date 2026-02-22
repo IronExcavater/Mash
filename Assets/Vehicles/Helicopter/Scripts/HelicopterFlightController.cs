@@ -410,16 +410,7 @@ public class HelicopterFlightController : MonoBehaviour
             targetY = Mathf.Max(targetY, GetHoverZoneMinimumWorldAltitude());
             heldAltitude = targetY;
             hasHeldAltitude = altitudeHold.enabled;
-
-            var p = body.position;
-            p.y = targetY;
-            body.position = p;
-            transform.position = p;
-            if (!body.isKinematic)
-            {
-                body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
-                body.angularVelocity = Vector3.zero;
-            }
+            ApplyStartupPlacement(targetY);
 
             startupPlacementComplete = true;
             return true;
@@ -433,22 +424,38 @@ public class HelicopterFlightController : MonoBehaviour
             targetY = Mathf.Max(targetY, GetHoverZoneMinimumWorldAltitude());
             heldAltitude = targetY;
             hasHeldAltitude = altitudeHold.enabled;
-
-            var p = body.position;
-            p.y = targetY;
-            body.position = p;
-            transform.position = p;
-            if (!body.isKinematic)
-            {
-                body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
-                body.angularVelocity = Vector3.zero;
-            }
+            ApplyStartupPlacement(targetY);
 
             startupPlacementComplete = true;
             return true;
         }
 
         return false;
+    }
+
+    private void ApplyStartupPlacement(float targetY)
+    {
+        var position = body.position;
+        position.y = targetY;
+
+        var yawForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+        if (yawForward.sqrMagnitude <= 0.0001f)
+            yawForward = Vector3.ProjectOnPlane(headingForward, Vector3.up);
+        if (yawForward.sqrMagnitude <= 0.0001f)
+            yawForward = Vector3.forward;
+        yawForward.Normalize();
+
+        var uprightYawRotation = Quaternion.LookRotation(yawForward, Vector3.up);
+        headingForward = yawForward;
+
+        body.position = position;
+        body.rotation = uprightYawRotation;
+        transform.SetPositionAndRotation(position, uprightYawRotation);
+
+        if (body.isKinematic) return;
+
+        body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
+        body.angularVelocity = Vector3.zero;
     }
 
     public void SetInputEnabled(bool isEnabled)
