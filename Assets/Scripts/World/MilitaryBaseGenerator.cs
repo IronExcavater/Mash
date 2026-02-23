@@ -30,6 +30,7 @@ public class MilitaryBaseGenerator : MonoBehaviour
     [Header("Perimeter")]
     [SerializeField] private GameObject wallPrefab;
     [SerializeField] private GameObject watchTowerPrefab;
+    [SerializeField] private bool disableWatchTowerColliders = true;
     [SerializeField, Min(60f)] private float wallWidth = 108f;
     [SerializeField, Min(60f)] private float wallLength = 102f;
     [SerializeField, Min(0f)] private float wallYOffset = 0f;
@@ -473,6 +474,8 @@ public class MilitaryBaseGenerator : MonoBehaviour
                 ? Quaternion.LookRotation(toCenter.normalized, Vector3.up) * Quaternion.Euler(0f, 180f, 0f)
                 : Quaternion.identity;
             SnapObjectToGround(tower.transform, towerYBoost);
+            if (disableWatchTowerColliders)
+                SetCollidersEnabled(tower.transform, false);
         }
     }
 
@@ -482,6 +485,17 @@ public class MilitaryBaseGenerator : MonoBehaviour
         var t = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         t.transform.localScale = new Vector3(2.5f, 6.5f, 2.5f);
         return t;
+    }
+
+    private static void SetCollidersEnabled(Transform root, bool enabled)
+    {
+        if (root == null) return;
+        var colliders = root.GetComponentsInChildren<Collider>(true);
+        for (var i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] == null) continue;
+            colliders[i].enabled = enabled;
+        }
     }
 
     private void BuildPatternBuildings(Vector3 center)
